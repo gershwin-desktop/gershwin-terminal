@@ -332,16 +332,6 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
 - (BOOL)windowShouldClose:(id)sender
 {
-  // NSLog(@"Window SHOULD close.");
-  if ([[self window] isDocumentEdited]) {
-    if (NSRunAlertPanel(@"Close",
-                        @"Closing this window will terminate"
-                        @" running process(es) inside it.",
-                        @"Cancel", @"Close anyway", nil) == NSAlertDefaultReturn) {
-      return NO;
-    }
-  }
-
   return YES;
 }
 
