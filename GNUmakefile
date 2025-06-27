@@ -55,15 +55,7 @@ Terminal_RESOURCE_FILES = \
 	Resources/ScrollingMach.tiff \
 	Resources/ScrollingOutput.tiff
 
-MAKE_STRINGS_OPTIONS = --aggressive-match --aggressive-remove
-
-ADDITIONAL_OBJCFLAGS += -Wall -D$(subst -,_,$(GNUSTEP_HOST_OS)) -Wno-pointer-sign
-
-# Useful warnings:
-#	-W -Wformat=2 -Wno-sign-compare -Wpointer-arith \
-#	-Wbad-function-cast -Wcast-align -Wwrite-strings -Wstrict-prototypes \
-#	-Wmissing-prototypes -Wmissing-declarations \
-#	-Wnested-externs -Wno-unused-parameter
-
+-include GNUmakefile.preamble
 include $(GNUSTEP_MAKEFILES)/aggregate.make
 include $(GNUSTEP_MAKEFILES)/application.make
+-include GNUmakefile.postamble

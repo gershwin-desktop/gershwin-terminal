@@ -14,19 +14,50 @@
   stupid but fast character cell display view.
 */
 
-#include <limits.h>
+/* define this if you need the forkpty replacement and it is not automatically
+   activated */
+#undef USE_FORKPTY_REPLACEMENT
+
+/* check for solaris */
+#if defined (__SVR4) && defined (__sun)
+#define __SOLARIS__ 1
+#define USE_FORKPTY_REPLACEMENT 1
+#endif
+
 #include <math.h>
-#include <stdio.h>
-#include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <termio.h>
+
+#ifdef __NetBSD__
+#  include <sys/types.h>
+#  include <sys/ioctl.h>
+#  include <termios.h>
+#  include <pcap.h>
+#  define TCSETS TIOCSETA
+#elif defined(__FreeBSD__)
+#  include <sys/types.h>
+#  include <sys/ioctl.h>
+#  include <termios.h>
+#  include <libutil.h>
+#  include <pcap.h>
+#elif defined(__OpenBSD__)
+#  include <termios.h>
+#  include <util.h>
+#  include <sys/ioctl.h>
+#elif defined (__GNU__)
+#else
+#  include <termio.h>
+#endif
+
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <pty.h>
-#include <sys/wait.h>
+#ifndef __FreeBSD__
+#if !(defined (__NetBSD__)) && !(defined (__SOLARIS__)) && !(defined(__OpenBSD__))
+#  include <pty.h>
+#endif
+#endif
 
 #import <AppKit/AppKit.h>
 #import <GNUstepBase/Unicode.h>
