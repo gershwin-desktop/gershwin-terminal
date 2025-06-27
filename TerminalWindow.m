@@ -99,28 +99,34 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
   hBox = [[GSHbox alloc] init];
 
-  // Scroller
-  scroller =
-      [[NSScroller alloc] initWithFrame:NSMakeRect(0, 0, scrollerWidth, charCellSize.height)];
+  // Scroller (Create First but Do NOT Add to hBox Yet)
+  scroller = [[NSScroller alloc] initWithFrame:NSMakeRect(0, 0, scrollerWidth, charCellSize.height)];
   [scroller setArrowsPosition:NSScrollerArrowsMaxEnd];
   [scroller setEnabled:YES];
   [scroller setAutoresizingMask:NSViewHeightSizable];
-  if (scrollBackEnabled) {
-    [hBox addView:scroller enablingXResizing:NO];
-    [scroller release];
-  }
 
-  // View
+  // View (Initialize After Scroller is Created)
   tView = [[TerminalView alloc] initWithPreferences:preferences];
   [tView setIgnoreResize:YES];
   [tView setAutoresizingMask:NSViewHeightSizable | NSViewWidthSizable];
+
+  // Link Scroller to tView BEFORE Adding tView to hBox
   [tView setScroller:scroller];
+
+  // Add tView FIRST to Ensure Proper Layout
   [hBox addView:tView];
   [tView release];
   [tView setIgnoreResize:NO];
   [win makeFirstResponder:tView];
 
   [tView setBorderX:4 Y:2];
+
+  // Now Add Scroller to hBox AFTER tView (Places it on the Right)
+  if (scrollBackEnabled)
+  {
+    [hBox addView:scroller enablingXResizing:NO];
+    [scroller release];
+  }
 
   [win setContentView:hBox];
   DESTROY(hBox);
