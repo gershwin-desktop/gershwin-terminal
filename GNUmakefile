@@ -6,7 +6,7 @@
 # of the License. See COPYING or main.m for more information.
 
 
-GNUSTEP_INSTALLATION_DOMAIN = LOCAL
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 include $(GNUSTEP_MAKEFILES)/common.make
 
 APP_NAME = Terminal
