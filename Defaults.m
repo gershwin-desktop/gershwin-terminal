@@ -361,7 +361,11 @@ NSString *TerminalFontSizeKey = @"TerminalFontSize";
   fSize = [self floatForKey:TerminalFontSizeKey];
   fName = [self stringForKey:TerminalFontKey];
   if (!fSize) {
-    terminalFont = [NSFont userFixedPitchFontOfSize:fSize];
+    // No preferences set - use default monospaced font
+    terminalFont = [NSFont userFixedPitchFontOfSize:12.0];
+    if (!terminalFont) {
+      terminalFont = [NSFont fontWithName:@"monospace" size:12.0];
+    }
   } else {
     terminalFont = [NSFont fontWithName:fName size:fSize];
     if (!terminalFont) {
