@@ -269,6 +269,7 @@ static const unichar *_set_translate(int charset)
 
 - (void)_update_attr
 {
+  video_erase_char.ch = ' ';
   video_erase_char.color = color;
   video_erase_char.attr = (intensity) | (underline << 2) | (reverse << 3) | (blink << 4);
 }
