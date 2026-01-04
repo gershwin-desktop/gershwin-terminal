@@ -60,7 +60,7 @@ static Defaults *shared = nil;
       NSRunAlertPanel(@"Session Directory",
                        @"%@ exists and not a directory.\n"
                         "Check your home directory layout",
-                       @"Ok", nil, nil, path);
+                       @"OK", nil, nil, path);
       return nil;
     }
   } else {
@@ -68,7 +68,7 @@ static Defaults *shared = nil;
       NSRunAlertPanel(@"Session Directory",
                        @"Error occured while creating directory %@.\n"
                         "Check your home directory layout",
-                       @"Ok", nil, nil, path);
+                       @"OK", nil, nil, path);
       return nil;
     }
   }
