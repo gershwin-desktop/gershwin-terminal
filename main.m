@@ -47,10 +47,41 @@
 
 - (void)sendEvent:(NSEvent *)e
 {
-  if ([e type] == NSKeyDown && [e modifierFlags] & NSCommandKeyMask &&
-      [[Defaults shared] alternateAsMeta]) {
-    NSDebugLLog(@"key", @"intercepting key equivalent");
-    [[e window] sendEvent:e];
+  unsigned int flags = [e modifierFlags];
+
+  /*
+    If the Alternate/Option key is pressed, synthesize an equivalent event
+    with Command pressed and ask the key window and main menu to handle it.
+    If a menu matches (e.g., Close Window with 'w'), handle it and return.
+    This allows Alt-W to trigger Close Window while keeping Alt-as-Meta
+    behavior when no menu equivalent exists.
+  */
+  if ([e type] == NSKeyDown && (flags & NSAlternateKeyMask)) {
+    NSEvent *cmdEvent = [NSEvent keyEventWithType:[e type]
+                                         location:[e locationInWindow]
+                                    modifierFlags:((flags & ~NSAlternateKeyMask) | NSCommandKeyMask)
+                                        timestamp:[e timestamp]
+                                     windowNumber:[e windowNumber]
+                                          context:[e context]
+                                       characters:[e characters]
+                     charactersIgnoringModifiers:[e charactersIgnoringModifiers]
+                                         isARepeat:[e isARepeat]
+                                           keyCode:[e keyCode]];
+
+    if (([[NSApp keyWindow] performKeyEquivalent:cmdEvent]) || ([[NSApp mainMenu] performKeyEquivalent:cmdEvent])) {
+      NSDebugLLog(@"key", @"Alt key matched menu key equivalent, handled");
+      return;
+    }
+  }
+
+  /*
+    Let NSApplication handle key equivalents when the Command key is pressed,
+    or when Alternate-as-Meta is enabled and Alternate is pressed.
+  */
+  if ([e type] == NSKeyDown &&
+      ((flags & NSCommandKeyMask) || ((flags & NSAlternateKeyMask) && [[Defaults shared] alternateAsMeta]))) {
+    NSDebugLLog(@"key", @"allowing NSApplication to handle key equivalent");
+    [super sendEvent:e];
     return;
   }
 
