@@ -60,6 +60,7 @@
   unsigned char decscnm, decom, decawm, deccm, decim;
   unsigned char ques;
   unsigned char charset, utf, disp_ctrl, toggle_meta;
+  unsigned int kbd_flags;
   int G0_charset, G1_charset;
 
   const unichar *translate;

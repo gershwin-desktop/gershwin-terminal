@@ -146,6 +146,7 @@ static const unichar *_set_translate(int charset)
 
   disp_ctrl = 0;
   toggle_meta = 0;
+  kbd_flags = 0;
 
   decscnm = 0;
   decom = 0;
@@ -444,8 +445,13 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
   scrup(foo, y, bottom, nr, NO);
 }
 
-#define set_kbd(foo)
-#define clr_kbd(foo)
+#define decckm 0x01
+#define kbdapplic 0x02
+#define lnm 0x04
+#define decarm 0x08
+#define set_kbd(foo) (kbd_flags |= (foo))
+#define clr_kbd(foo) (kbd_flags &= ~(foo))
+#define is_kbd(foo) (kbd_flags & (foo))
 
 #define set_mode(foo, on_off) [self _set_mode:on_off]
 - (void)_set_mode:(int)on_off
@@ -748,16 +754,12 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
           [self _reset_terminal];
           return;
         case '>': /* Numeric keypad */
-          NSDebugLLog(@"term", @"ignore ESesc >  keypad");
-#if 0
-      clr_kbd(kbdapplic);
-#endif
+          NSDebugLLog(@"term", @"ESesc >  keypad");
+          clr_kbd(kbdapplic);
           return;
         case '=': /* Appl. keypad */
-          NSDebugLLog(@"term", @"ignore ESesc =  keypad");
-#if 0
-      set_kbd(kbdapplic);
-#endif
+          NSDebugLLog(@"term", @"ESesc =  keypad");
+          set_kbd(kbdapplic);
           return;
       }
       return;
@@ -1280,7 +1282,83 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
   str = NULL;
   nstr = nil;
   ch2 = 0;
-  switch (ch) {
+  BOOL appCursor = is_kbd(decckm);
+  BOOL appKeypad = is_kbd(kbdapplic);
+  BOOL handled = NO;
+  if (appKeypad && (mask & NSNumericPadKeyMask)) {
+    switch (ch) {
+      case '0':
+        str = "\eOp";
+        handled = YES;
+        break;
+      case '1':
+        str = "\eOq";
+        handled = YES;
+        break;
+      case '2':
+        str = "\eOr";
+        handled = YES;
+        break;
+      case '3':
+        str = "\eOs";
+        handled = YES;
+        break;
+      case '4':
+        str = "\eOt";
+        handled = YES;
+        break;
+      case '5':
+        str = "\eOu";
+        handled = YES;
+        break;
+      case '6':
+        str = "\eOv";
+        handled = YES;
+        break;
+      case '7':
+        str = "\eOw";
+        handled = YES;
+        break;
+      case '8':
+        str = "\eOx";
+        handled = YES;
+        break;
+      case '9':
+        str = "\eOy";
+        handled = YES;
+        break;
+      case '.':
+        str = "\eOn";
+        handled = YES;
+        break;
+      case '-':
+        str = "\eOm";
+        handled = YES;
+        break;
+      case '+':
+        str = "\eOk";
+        handled = YES;
+        break;
+      case '*':
+        str = "\eOj";
+        handled = YES;
+        break;
+      case '/':
+        str = "\eOo";
+        handled = YES;
+        break;
+      case '\r':
+        str = "\eOM";
+        handled = YES;
+        break;
+      case '=':
+        str = "\eOX";
+        handled = YES;
+        break;
+    }
+  }
+  if (!handled) {
+    switch (ch) {
     case '\e':
       if (sendDoubleEscape)
         str = "\e\e";
@@ -1292,25 +1370,25 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       // if (mask & NSShiftKeyMask)
       //   str = "\e[1;2A"; // xterm
       // else
-      str = "\e[A";
+      str = appCursor ? "\eOA" : "\e[A";
       break;
     case NSDownArrowFunctionKey:
       // if (mask & NSShiftKeyMask)
       //   str ="\e[1;2B"; // xterm
       // else
-      str = "\e[B";
+      str = appCursor ? "\eOB" : "\e[B";
       break;
     case NSLeftArrowFunctionKey:
       // if (mask & NSShiftKeyMask)
       //   str = "\e[1;2D"; // xterm
       // else
-      str = "\e[D";
+      str = appCursor ? "\eOD" : "\e[D";
       break;
     case NSRightArrowFunctionKey:
       // if (mask & NSShiftKeyMask)
       //   str="\e[1;2C"; //xterm
       // else
-      str = "\e[C";
+      str = appCursor ? "\eOC" : "\e[C";
       break;
 
     case NSF1FunctionKey:
@@ -1377,7 +1455,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       break;
 
     case NSHomeFunctionKey:
-      str = "\e[1~";
+      str = appCursor ? "\eOH" : "\e[1~";
       break;
     case NSInsertFunctionKey:
       str = "\e[2~";
@@ -1386,7 +1464,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       str = "\e[3~";
       break;
     case NSEndFunctionKey:
-      str = "\e[4~";
+      str = appCursor ? "\eOF" : "\e[4~";
       break;
     case NSPageUpFunctionKey:
       str = "\e[5~";
@@ -1413,6 +1491,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
     default:
       nstr = [e characters];
       break;
+    }
   }
 
   /*
