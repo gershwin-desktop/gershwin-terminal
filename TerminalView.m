@@ -868,7 +868,10 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (void)setNeedsDisplayInRect:(NSRect)r
 {
-  draw_all = 2;
+  /* Do not force full-screen redraw here. Callers that genuinely need a full
+     repaint call -setNeedsDisplay:YES (which goes through the full-redraw
+     path). Leaving draw_all alone lets lazy dirty-cell drawing stay efficient
+     under streaming PTY output. */
   [super setNeedsDisplayInRect:r];
 }
 
@@ -2936,7 +2939,14 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   NSString *childPID;
   NSMutableArray *children;
 
-  // fprintf(stderr, "--- updateProgramPath - %i\n", child_pid);
+  /* Debounce: walking /proc on every PTY read burst blocks the UI under
+     fork-heavy workloads. Only re-walk if >=250 ms since the last call. */
+  static NSTimeInterval _lastWalk = 0.0;
+  NSTimeInterval _now = [NSDate timeIntervalSinceReferenceDate];
+  if (_now - _lastWalk < 0.25) {
+    return;
+  }
+  _lastWalk = _now;
 
   if (child_pid == 0) {
     return;
