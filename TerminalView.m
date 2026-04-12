@@ -515,6 +515,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
     /* setting the color is slow, so we try to avoid it */
     unsigned char last_color, color, last_attr;
+    unsigned char last_rgb_flags = 0;
+    unsigned int last_fg_rgb = 0xFFFFFFFF;
+    unsigned int last_bg_rgb = 0xFFFFFFFF;
 
 #define R(scr_x, scr_y, fx, fy) DPSrectfill(cur, scr_x, scr_y, fx, fy)
 
@@ -566,7 +569,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
             color ^= 0xf0;
           }
 
-          if (color != last_color || ch->attr != last_attr) {
+          if (color != last_color || ch->attr != last_attr ||
+              (ch->rgb_flags & SC_BG_RGB) != (last_rgb_flags & SC_BG_RGB) ||
+              ((ch->rgb_flags & SC_BG_RGB) && ch->bg_rgb != last_bg_rgb)) {
             if (start_x != -1) {
               R(start_x, scr_y, scr_x - start_x, fy);
               start_x = scr_x;
@@ -574,6 +579,8 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
             last_color = color;
             last_attr = ch->attr;
+            last_rgb_flags = (last_rgb_flags & ~SC_BG_RGB) | (ch->rgb_flags & SC_BG_RGB);
+            last_bg_rgb = ch->bg_rgb;
 
             // fprintf(stderr,
             //         "'%c' BG INVERSE color: %i (%i)"
@@ -600,7 +607,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
             color ^= 0xf0;  // selected
           }
 
-          if (color != last_color || ch->attr != last_attr) {
+          if (color != last_color || ch->attr != last_attr ||
+              (ch->rgb_flags & SC_BG_RGB) != (last_rgb_flags & SC_BG_RGB) ||
+              ((ch->rgb_flags & SC_BG_RGB) && ch->bg_rgb != last_bg_rgb)) {
             if (start_x != -1) {
               R(start_x, scr_y, scr_x - start_x, fy);
               start_x = scr_x;
@@ -608,6 +617,8 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
             last_color = color;
             last_attr = ch->attr;
+            last_rgb_flags = (last_rgb_flags & ~SC_BG_RGB) | (ch->rgb_flags & SC_BG_RGB);
+            last_bg_rgb = ch->bg_rgb;
 
             // fprintf(stderr,
             //         "'%c' BG NORMAL color: %i (%i) attrs: %i (in:%i sel:%i)"
@@ -623,10 +634,13 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
             }
 
             if (ch->attr & 0x40) {  // selection BG
-              // fprintf(stderr, "'%c' \tBG NORMAL: setting WIN_SEL\n", ch->ch);
               DPSsethsbcolor(cur, WIN_SEL_H, WIN_SEL_S, WIN_SEL_B);
+            } else if (ch->rgb_flags & SC_BG_RGB) {
+              float rr = ((ch->bg_rgb >> 16) & 0xff) / 255.0;
+              float gg = ((ch->bg_rgb >> 8) & 0xff) / 255.0;
+              float bb = (ch->bg_rgb & 0xff) / 255.0;
+              DPSsetrgbcolor(cur, rr, gg, bb);
             } else if ((ch->color >> 4) == 15) {  // default BG
-              // fprintf(stderr, "'%c' \tBG NORMAL: setting WIN_BG\n", ch->ch);
               DPSsethsbcolor(cur, WIN_BG_H, WIN_BG_S, WIN_BG_B);
             } else {
               set_background(cur, last_color, last_attr & 0x03, NO);
@@ -647,6 +661,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     //------------------- CHARACTERS ------------------------------------------------
     last_color = -1;
     last_attr = 0;
+    last_rgb_flags = 0;
+    last_fg_rgb = 0xFFFFFFFF;
+    last_bg_rgb = 0xFFFFFFFF;
     /* Now draw any dirty characters */
     for (iy = y0; iy < y1; iy++) {
       ry = iy + curr_sb_position;
@@ -713,22 +730,20 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
               color ^= 0x0f;
             }
 
-            if (color != last_color || ch->attr != last_attr) {
+            if (color != last_color || ch->attr != last_attr ||
+                (ch->rgb_flags & SC_FG_RGB) != (last_rgb_flags & SC_FG_RGB) ||
+                ((ch->rgb_flags & SC_FG_RGB) && ch->fg_rgb != last_fg_rgb)) {
               last_color = color;
               last_attr = ch->attr;
+              last_rgb_flags = (last_rgb_flags & ~SC_FG_RGB) | (ch->rgb_flags & SC_FG_RGB);
+              last_fg_rgb = ch->fg_rgb;
 
-              // fprintf(stderr,
-              //         "'%c' FG NORMAL color: %i (%i)"
-              //         " attrs: %i (in:%i sel:%i)"
-              //         " FG: %i BG: %i\n",
-              //         ch->ch, ch->color, l_color,
-              //         ch->attr, l_attr & 0x03, l_attr & 0x40,
-              //         (ch->color & 0x0f), (ch->color>>4));
-
-              if (color == 15 || (ch->attr & 0x40)) {
-                // fprintf(stderr,
-                //         "'%c' \tFG NORMAL: setting TEXT_NORM\n",
-                //         ch->ch);
+              if (ch->rgb_flags & SC_FG_RGB) {
+                float rr = ((ch->fg_rgb >> 16) & 0xff) / 255.0;
+                float gg = ((ch->fg_rgb >> 8) & 0xff) / 255.0;
+                float bb = (ch->fg_rgb & 0xff) / 255.0;
+                DPSsetrgbcolor(cur, rr, gg, bb);
+              } else if (color == 15 || (ch->attr & 0x40)) {
                 DPSsethsbcolor(cur, TEXT_NORM_H, TEXT_NORM_S, TEXT_NORM_B);
               } else {
                 set_foreground(cur, last_color, last_attr & 0x03);
@@ -903,6 +918,53 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   ADD_DIRTY(x, y, c, 1);
 }
 
+- (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter
+{
+  size_t cells = (size_t)screen_width * (size_t)screen_height;
+  size_t bytes = cells * sizeof(screen_char_t);
+
+  if (useAlt == on_alt_screen) {
+    return;
+  }
+
+  if (!alt_screen_buffer ||
+      alt_screen_alloc_w != screen_width ||
+      alt_screen_alloc_h != screen_height) {
+    free(alt_screen_buffer);
+    alt_screen_buffer = malloc(bytes);
+    memset(alt_screen_buffer, 0, bytes);
+    alt_screen_alloc_w = screen_width;
+    alt_screen_alloc_h = screen_height;
+  }
+
+  /* swap screen and alt_screen_buffer */
+  screen_char_t *tmp = screen;
+  screen = alt_screen_buffer;
+  alt_screen_buffer = tmp;
+  on_alt_screen = useAlt;
+
+  if (useAlt && clearOnEnter) {
+    memset(screen, 0, bytes);
+  }
+
+  /* mark everything dirty */
+  {
+    int i;
+    int total = screen_width * screen_height;
+    for (i = 0; i < total; i++) {
+      screen[i].attr |= 0x80;
+    }
+  }
+  draw_all = 2;
+  [self setNeedsDisplay:YES];
+}
+
+- (void)ts_setCursorShape:(int)shape
+{
+  /* Accept but currently do not change the visual cursor shape. */
+  (void)shape;
+}
+
 - (void)ts_putChar:(screen_char_t)ch count:(int)c offset:(int)ofs
 {
   int i;
@@ -950,6 +1012,23 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 - (void)ts_sendCString:(const char *)msg
 {
   [self ts_sendCString:msg length:strlen(msg)];
+}
+
+/* Report current window background as RGB in [0,1].  Used by the
+   parser to reply to OSC 11 (background color query). */
+- (void)ts_getBackgroundRGBR:(double *)r G:(double *)g B:(double *)b
+{
+  NSColor *bg = [defaults windowBackgroundColor];
+  NSColor *rgb = [bg colorUsingColorSpaceName:NSDeviceRGBColorSpace];
+  if (rgb) {
+    if (r) *r = [rgb redComponent];
+    if (g) *g = [rgb greenComponent];
+    if (b) *b = [rgb blueComponent];
+  } else {
+    if (r) *r = 0.0;
+    if (g) *g = 0.0;
+    if (b) *b = 0.0;
+  }
 }
 
 - (void)ts_sendCString:(const char *)msg length:(int)len
@@ -2035,8 +2114,17 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
       fprintf(stderr, "Unable do set directory: %s\n", cdirectory);
     }
 
-    putenv("TERM=linux");
+    putenv("TERM=xterm-256color");
+    putenv("COLORTERM=truecolor");
     putenv("TERM_PROGRAM=GNUstep_Terminal");
+    /* COLORFGBG hint so apps (like Claude Code) can pick a readable
+       theme without being able to query OSC 11.  Format is "fg;bg"
+       as ANSI palette indices; 15 is bright white, 0 is black. */
+    if (WIN_BG_B > 0.5) {
+      putenv("COLORFGBG=0;15");
+    } else {
+      putenv("COLORFGBG=15;0");
+    }
 
     // fprintf(stderr, "Child process terminal: %s\n", ttyname(0));
 
@@ -2423,8 +2511,10 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
   free(screen);
   free(scrollback);
+  free(alt_screen_buffer);
   screen = NULL;
   scrollback = NULL;
+  alt_screen_buffer = NULL;
 
   DESTROY(additionalWordCharacters);
   DESTROY(font);

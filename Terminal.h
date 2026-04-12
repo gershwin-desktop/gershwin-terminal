@@ -29,7 +29,18 @@ typedef struct {
     6     01000000 - 0x40  - used as a selected flag internally
     7     10000000 - 0x80  - used as a dirty flag internally
   */
+  unsigned char rgb_flags;
+  /*
+    bit 0  0x01 - fg_rgb is valid (use it instead of palette fg)
+    bit 1  0x02 - bg_rgb is valid (use it instead of palette bg)
+  */
+  unsigned char _pad;
+  unsigned int fg_rgb; /* 0x00RRGGBB */
+  unsigned int bg_rgb; /* 0x00RRGGBB */
 } screen_char_t;
+
+#define SC_FG_RGB 0x01
+#define SC_BG_RGB 0x02
 
 /* Used as a marker. */
 #define MULTI_CELL_GLYPH 0xfffe
@@ -57,6 +68,11 @@ complete. (TODO check this) */
 - (id)preferences;
 - (BOOL)useMultiCellGlyphs;
 - (int)relativeWidthOfCharacter:(unichar)ch;
+
+@optional
+- (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter;
+- (void)ts_setCursorShape:(int)shape;
+- (void)ts_getBackgroundRGBR:(double *)r G:(double *)g B:(double *)b;
 
 @end
 

@@ -53,12 +53,20 @@
     ESnonstd,
     ESpalette,
     EStitle_semi,
-    EStitle_buf
+    EStitle_buf,
+    ESosc_num,
+    ESosc_drain,
+    ESosc_drain_esc
   } ESstate;
   int vc_state;
 
   unsigned char decscnm, decom, decawm, deccm, decim;
   unsigned char ques;
+  unsigned char priv_intro; /* '>' or '=' private CSI intro, or 0 */
+  unsigned char saw_space;  /* seen SP (0x20) intermediate in CSI */
+  int osc_num;              /* OSC numeric parameter being collected */
+  char osc_buf[256];        /* OSC payload buffer (for OSC 11 ? reply) */
+  unsigned int osc_buf_len;
   unsigned char charset, utf, disp_ctrl, toggle_meta;
   unsigned int kbd_flags;
   int G0_charset, G1_charset;
@@ -67,6 +75,21 @@
 
   unsigned int intensity, underline, reverse, blink;
   unsigned int color, def_color;
+
+  unsigned int fg_rgb, bg_rgb;
+  unsigned char rgb_flags;
+
+  /* Alternate screen buffer support. */
+  screen_char_t *alt_screen;
+  int alt_width, alt_height;
+  int alt_saved_x, alt_saved_y;
+  BOOL on_alt_screen;
+
+  /* Mouse reporting mode: 0=off, 1000/1002/1003; 1006=SGR encoding flag. */
+  int mouse_mode;
+  BOOL mouse_sgr;
+  BOOL bracketed_paste;
+  BOOL focus_events;
 #define foreground (color & 0x0f)
 #define background (color & 0xf0)
 

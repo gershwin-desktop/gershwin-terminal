@@ -23,4 +23,4 @@ ADDITIONAL_LIB_DIRS +=
 # Additional GUI libraries to link
 ADDITIONAL_GUI_LIBS += 
 
-ADDITIONAL_LDFLAGS += -liconv -lutil
+ADDITIONAL_LDFLAGS += -lutil

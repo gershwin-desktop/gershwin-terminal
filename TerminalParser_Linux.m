@@ -127,12 +127,41 @@ static const unichar *_set_translate(int charset)
     translate = set_translate(charset ? G1_charset : G0_charset, currcons); \
   } while (0)
 
+/* Called when an OSC non-title sequence terminates. osc_num holds the
+   numeric command; osc_buf/osc_buf_len holds the ';'-delimited payload. */
+- (void)_handle_osc
+{
+  /* OSC 11 ; ? ST : query window background color. Reply with
+     ESC ] 11 ; rgb:RRRR/GGGG/BBBB ESC \ */
+  if (osc_num == 11 && osc_buf_len >= 1 && osc_buf[0] == '?') {
+    double r = 0.0, g = 0.0, b = 0.0;
+    if ([(id)ts respondsToSelector:@selector(ts_getBackgroundRGBR:G:B:)]) {
+      [ts ts_getBackgroundRGBR:&r G:&g B:&b];
+    }
+    unsigned int R = (unsigned int)(r * 65535.0);
+    unsigned int G = (unsigned int)(g * 65535.0);
+    unsigned int B = (unsigned int)(b * 65535.0);
+    if (R > 0xffff) R = 0xffff;
+    if (G > 0xffff) G = 0xffff;
+    if (B > 0xffff) B = 0xffff;
+    char reply[64];
+    snprintf(reply, sizeof(reply),
+             "\033]11;rgb:%04x/%04x/%04x\033\\", R, G, B);
+    [ts ts_sendCString:reply];
+  }
+  /* All other OSC (4,8,10,12,52,104,110-119,etc.) silently consumed. */
+}
+
 - (void)_reset_terminal
 {
   top = 0;
   bottom = height;
   vc_state = ESnormal;
   ques = 0;
+  priv_intro = 0;
+  saw_space = 0;
+  osc_num = 0;
+  osc_buf_len = 0;
   title_len = 0;
 
   translate = set_translate(LAT1_MAP, currcons);
@@ -266,6 +295,9 @@ static const unichar *_set_translate(int charset)
   reverse = 0;
   blink = 0;
   color = def_color;
+  rgb_flags = 0;
+  fg_rgb = 0;
+  bg_rgb = 0;
 }
 
 - (void)_update_attr
@@ -273,6 +305,36 @@ static const unichar *_set_translate(int charset)
   video_erase_char.ch = ' ';
   video_erase_char.color = color;
   video_erase_char.attr = (intensity) | (underline << 2) | (reverse << 3) | (blink << 4);
+  video_erase_char.rgb_flags = rgb_flags;
+  video_erase_char.fg_rgb = fg_rgb;
+  video_erase_char.bg_rgb = bg_rgb;
+  video_erase_char._pad = 0;
+}
+
+/* Standard xterm 256-color palette -> 0x00RRGGBB. */
+static unsigned int _xterm_256_to_rgb(int idx)
+{
+  static const unsigned char basic16[16][3] = {
+    {  0,  0,  0}, {205,  0,  0}, {  0,205,  0}, {205,205,  0},
+    {  0,  0,238}, {205,  0,205}, {  0,205,205}, {229,229,229},
+    {127,127,127}, {255,  0,  0}, {  0,255,  0}, {255,255,  0},
+    { 92, 92,255}, {255,  0,255}, {  0,255,255}, {255,255,255},
+  };
+  if (idx < 0) idx = 0;
+  if (idx > 255) idx = 255;
+  if (idx < 16) {
+    return (basic16[idx][0] << 16) | (basic16[idx][1] << 8) | basic16[idx][2];
+  }
+  if (idx < 232) {
+    int n = idx - 16;
+    static const unsigned char cube[6] = {0, 95, 135, 175, 215, 255};
+    int r = cube[(n / 36) % 6];
+    int g = cube[(n / 6) % 6];
+    int b = cube[n % 6];
+    return (r << 16) | (g << 8) | b;
+  }
+  int v = 8 + (idx - 232) * 10;
+  return (v << 16) | (v << 8) | v;
 }
 
 static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 13, 11, 15};
@@ -335,24 +397,72 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       case 27:  // reverse video off
         reverse = 0;
         break;
-      case 38:  // set underscore on, set default foreground color
-        color = (def_color & 0x0f) | foreground;
-        underline = 1;
+      case 38: /* extended foreground: 38;5;N or 38;2;R;G;B */
+        if (i + 2 <= npar && par[i + 1] == 5) {
+          int idx = par[i + 2];
+          fg_rgb = _xterm_256_to_rgb(idx);
+          rgb_flags |= SC_FG_RGB;
+          if (idx < 16) {
+            color = (color & 0xf0) | color_table[idx & 0x0f];
+          }
+          i += 2;
+        } else if (i + 4 <= npar && par[i + 1] == 2) {
+          int r = par[i + 2] & 0xff;
+          int g = par[i + 3] & 0xff;
+          int b = par[i + 4] & 0xff;
+          fg_rgb = (r << 16) | (g << 8) | b;
+          rgb_flags |= SC_FG_RGB;
+          i += 4;
+        } else {
+          /* Legacy Linux console behavior. */
+          color = (def_color & 0x0f) | background;
+          underline = 1;
+        }
         break;
       case 39:  // set underscore off, set default foreground color
         color = (def_color & 0x0f) | background;
         underline = 0;
+        rgb_flags &= ~SC_FG_RGB;
+        fg_rgb = 0;
+        break;
+      case 48: /* extended background: 48;5;N or 48;2;R;G;B */
+        if (i + 2 <= npar && par[i + 1] == 5) {
+          int idx = par[i + 2];
+          bg_rgb = _xterm_256_to_rgb(idx);
+          rgb_flags |= SC_BG_RGB;
+          if (idx < 16) {
+            color = (color & 0x0f) | (color_table[idx & 0x0f] << 4);
+          }
+          i += 2;
+        } else if (i + 4 <= npar && par[i + 1] == 2) {
+          int r = par[i + 2] & 0xff;
+          int g = par[i + 3] & 0xff;
+          int b = par[i + 4] & 0xff;
+          bg_rgb = (r << 16) | (g << 8) | b;
+          rgb_flags |= SC_BG_RGB;
+          i += 4;
+        }
         break;
       case 49:  // set default background color
         color = (def_color & 0xf0) | foreground;
+        rgb_flags &= ~SC_BG_RGB;
+        bg_rgb = 0;
         break;
       default:
         if ((par[i] >= 30 && par[i] <= 37)) {
-          // fprintf(stderr, "TParser: foreground color: %i\n", par[i]);
           color = color_table[par[i] - 30] | background;
+          rgb_flags &= ~SC_FG_RGB;
         } else if (par[i] >= 40 && par[i] <= 47) {
-          // fprintf(stderr, "TParser: background color: %i\n", par[i]);
           color = (color_table[par[i] - 40] << 4) | foreground;
+          rgb_flags &= ~SC_BG_RGB;
+        } else if (par[i] >= 90 && par[i] <= 97) {
+          /* bright foreground */
+          color = (color_table[par[i] - 90] | 0x08) | background;
+          rgb_flags &= ~SC_FG_RGB;
+        } else if (par[i] >= 100 && par[i] <= 107) {
+          /* bright background */
+          color = ((color_table[par[i] - 100] | 0x08) << 4) | foreground;
+          rgb_flags &= ~SC_BG_RGB;
         }
         break;
     }
@@ -508,11 +618,60 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         case 25: /* Cursor on/off */
           deccm = on_off;
           break;
-        case 1000:
-          NSDebugLLog(@"term", @"ignore _set_mode 1000");
-#if 0
-        report_mouse = on_off ? 2 : 0;
-#endif
+        case 1000: /* X11 mouse: button press/release */
+          mouse_mode = on_off ? 1000 : 0;
+          break;
+        case 1002: /* button-event mouse (with drag) */
+          mouse_mode = on_off ? 1002 : 0;
+          break;
+        case 1003: /* any-event mouse */
+          mouse_mode = on_off ? 1003 : 0;
+          break;
+        case 1004: /* focus in/out events */
+          focus_events = on_off ? YES : NO;
+          break;
+        case 1005: /* UTF-8 mouse encoding - accept, no-op */
+          break;
+        case 1006: /* SGR mouse encoding */
+          mouse_sgr = on_off ? YES : NO;
+          break;
+        case 1015: /* urxvt mouse encoding - accept, no-op */
+          break;
+        case 1047: /* use alternate screen buffer */
+        case 1049: /* save cursor & use alternate screen buffer */
+          if (on_off && !on_alt_screen) {
+            if (par[i] == 1049) {
+              alt_saved_x = x;
+              alt_saved_y = y;
+            }
+            if ([(NSObject *)ts respondsToSelector:@selector(ts_setAlternateScreen:clearOnEnter:)]) {
+              [ts ts_setAlternateScreen:YES clearOnEnter:YES];
+            }
+            on_alt_screen = YES;
+          } else if (!on_off && on_alt_screen) {
+            if ([(NSObject *)ts respondsToSelector:@selector(ts_setAlternateScreen:clearOnEnter:)]) {
+              [ts ts_setAlternateScreen:NO clearOnEnter:NO];
+            }
+            on_alt_screen = NO;
+            if (par[i] == 1049) {
+              x = alt_saved_x;
+              y = alt_saved_y;
+              [ts ts_gotoX:x Y:y];
+            }
+          }
+          break;
+        case 1048: /* save/restore cursor */
+          if (on_off) {
+            alt_saved_x = x;
+            alt_saved_y = y;
+          } else {
+            x = alt_saved_x;
+            y = alt_saved_y;
+            [ts ts_gotoX:x Y:y];
+          }
+          break;
+        case 2004: /* bracketed paste */
+          bracketed_paste = on_off ? YES : NO;
           break;
       }
     else
@@ -656,6 +815,16 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
 
         return;
       }
+      if (vc_state == ESosc_drain || vc_state == ESosc_num ||
+          vc_state == ESnonstd) {
+        if (vc_state == ESosc_drain) {
+          osc_buf[osc_buf_len < sizeof(osc_buf) ? osc_buf_len
+                                                : sizeof(osc_buf) - 1] = 0;
+          [self _handle_osc];
+        }
+        vc_state = ESnormal;
+        return;
+      }
       NSBeep();
       return;
     case 8:
@@ -697,6 +866,17 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       vc_state = ESnormal;
       return;
     case 27:
+      if (vc_state == ESosc_drain || vc_state == ESosc_num ||
+          vc_state == ESnonstd || vc_state == EStitle_buf ||
+          vc_state == EStitle_semi) {
+        if (vc_state == ESosc_drain) {
+          osc_buf[osc_buf_len < sizeof(osc_buf) ? osc_buf_len
+                                                : sizeof(osc_buf) - 1] = 0;
+          [self _handle_osc];
+        }
+        vc_state = ESosc_drain_esc;
+        return;
+      }
       vc_state = ESesc;
       return;
     case 127:
@@ -764,30 +944,74 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       }
       return;
     case ESnonstd:
+      /* OSC: ESC ] <num> ; <payload> (BEL | ESC \) */
+      if (c >= '0' && c <= '9') {
+        osc_num = c - '0';
+        osc_buf_len = 0;
+        vc_state = ESosc_num;
+        return;
+      }
       switch (c) {
-        case '0':
-        case '1':
-        case '2':
-          vc_state = EStitle_semi;
-          title_type = c - '0';
-          return;
-
         case 'P':
           NSDebugLLog(@"term", @"ignore ESnonstd P");
-#if 0
-	for (npar=0; npar<NPAR; npar++)
-	  par[npar] = 0 ;
-	npar = 0 ;
-#endif
           vc_state = ESpalette;
           return;
         case 'R':
           NSDebugLLog(@"term", @"ignore ESnonstd R");
-#if 0
-	reset_palette(currcons);
-#endif
           vc_state = ESnormal;
+          return;
+        case 7:
+          vc_state = ESnormal;
+          return;
+        case 27:
+          vc_state = ESosc_drain_esc;
+          return;
       }
+      vc_state = ESnormal;
+      return;
+    case ESosc_num:
+      if (c >= '0' && c <= '9') {
+        osc_num = osc_num * 10 + (c - '0');
+        return;
+      }
+      if (c == ';') {
+        if (osc_num == 0 || osc_num == 1 || osc_num == 2) {
+          title_type = osc_num;
+          title_len = 0;
+          vc_state = EStitle_buf;
+        } else {
+          /* Buffer OSC payload (for OSC 11 ? reply), else drain silently. */
+          osc_buf_len = 0;
+          vc_state = ESosc_drain;
+        }
+        return;
+      }
+      if (c == 7 || c == 27) {
+        /* terminator right after number */
+        vc_state = (c == 27) ? ESosc_drain_esc : ESnormal;
+        return;
+      }
+      vc_state = ESnormal;
+      return;
+    case ESosc_drain:
+      if (c == 7) {
+        osc_buf[osc_buf_len < sizeof(osc_buf) ? osc_buf_len : sizeof(osc_buf) - 1] = 0;
+        [self _handle_osc];
+        vc_state = ESnormal;
+        return;
+      }
+      if (c == 27) {
+        osc_buf[osc_buf_len < sizeof(osc_buf) ? osc_buf_len : sizeof(osc_buf) - 1] = 0;
+        [self _handle_osc];
+        vc_state = ESosc_drain_esc;
+        return;
+      }
+      if (osc_buf_len < sizeof(osc_buf) - 1) {
+        osc_buf[osc_buf_len++] = c;
+      }
+      return;
+    case ESosc_drain_esc:
+      /* Consume the '\' of ST, or anything else; then back to normal. */
       vc_state = ESnormal;
       return;
     case EStitle_semi:
@@ -830,6 +1054,8 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         par[npar] = 0;
       }
       npar = 0;
+      priv_intro = 0;
+      saw_space = 0;
       vc_state = ESgetpars;
       if (c == '[') { /* Function key */
         vc_state = ESfunckey;
@@ -837,6 +1063,10 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       }
       ques = (c == '?');
       if (ques) {
+        return;
+      }
+      if (c == '>' || c == '=' || c == '<') {
+        priv_intro = c;
         return;
       }
     case ESgetpars:
@@ -847,11 +1077,41 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         par[npar] *= 10;
         par[npar] += c - '0';
         return;
+      } else if (c == ':') {
+        /* ITU-T T.416 / ECMA-48 sub-parameter separator (e.g.
+           CSI 38 : 2 : : R : G : B m).  Swallow all colon-delimited
+           sub-params for the current parameter position — we don't
+           implement them, but must not leak them as printable text. */
+        return;
+      } else if (c == ' ') {
+        /* SP intermediate (e.g. DECSCUSR: CSI n SP q) */
+        saw_space = 1;
+        return;
       } else {
         vc_state = ESgotpars;
       }
     case ESgotpars:
       vc_state = ESnormal;
+      /* DECSCUSR: CSI n SP q — cursor shape. Swallow silently. */
+      if (saw_space) {
+        saw_space = 0;
+        priv_intro = 0;
+        ques = 0;
+        if (c == 'q' && [(id)ts respondsToSelector:@selector(ts_setCursorShape:)]) {
+          [ts ts_setCursorShape:par[0]];
+        }
+        return;
+      }
+      /* Private CSI intro ('>' or '=' or '<'): xterm modifyOtherKeys,
+         version query, kitty keyboard protocol, etc. We do not implement
+         any of these — consume the final byte silently so its tail is not
+         leaked as printable text. */
+      if (priv_intro) {
+        priv_intro = 0;
+        ques = 0;
+        saw_space = 0;
+        return;
+      }
       switch (c) {
         case 'h':
           set_mode(currcons, 1);
@@ -1157,6 +1417,10 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
 
         ch.color = color;
         ch.attr = (intensity) | (underline << 2) | (reverse << 3) | (blink << 4);
+        ch.rgb_flags = rgb_flags;
+        ch._pad = 0;
+        ch.fg_rgb = fg_rgb;
+        ch.bg_rgb = bg_rgb;
 
         inp = (char *)input_buf;
         in_size = input_buf_len;
@@ -1204,6 +1468,10 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         int char_width;
         ch.color = color;
         ch.attr = (intensity) | (underline << 2) | (reverse << 3) | (blink << 4);
+        ch.rgb_flags = rgb_flags;
+        ch._pad = 0;
+        ch.fg_rgb = fg_rgb;
+        ch.bg_rgb = bg_rgb;
         ch.ch = unich;
         PUTCH
       }

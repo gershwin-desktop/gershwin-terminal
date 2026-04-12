@@ -93,6 +93,11 @@ struct selection_range {
   int screen_width;   // window width in characters (screen_char_t)
   int screen_height;  // window height in lines
 
+  // Alternate screen buffer (xterm 1047/1049)
+  screen_char_t *alt_screen_buffer;
+  int alt_screen_alloc_w, alt_screen_alloc_h;
+  BOOL on_alt_screen;
+
   int cursor_x, cursor_y;
   int current_x, current_y;
 
