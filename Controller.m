@@ -213,7 +213,7 @@
     }
   } else {
     // If it's a default session (changed or not) - open "Save As..." panel
-    NSLog(@"It's a default session - will open \"Save As...\" panel");
+    NSDebugLLog(@"term", @"It's a default session - will open \"Save As...\" panel");
     [self saveSessionAs:sender];
   }
 }
@@ -638,7 +638,7 @@
       }
     }
   } else {
-    NSLog(@"Window %@ became non idle.", [twc shellPath]);
+    NSDebugLLog(@"term", @"Window %@ became non idle.", [twc shellPath]);
     [idleList removeObject:twc];
   }
 

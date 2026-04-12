@@ -129,7 +129,7 @@ static Preferences *shared = nil;
 {
   id<PrefsModule> module;
 
-  NSLog(@"Preferences: main window now: %@", [[notif object] title]);
+  NSDebugLLog(@"term", @"Preferences: main window now: %@", [[notif object] title]);
 
   if ([[NSApp delegate] preferencesForWindow:[notif object] live:NO] == nil) {
     // NSLog(@"Preferences: main window is not terminal window.");

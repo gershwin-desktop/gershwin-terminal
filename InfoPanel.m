@@ -30,7 +30,7 @@
 {
   if (panel == nil) {
     if (![NSBundle loadNibNamed:@"Info" owner:self]) {
-      NSLog(@"Failed to load Info.gorm");
+      NSDebugLLog(@"term", @"Failed to load Info.gorm");
       return;
     }
     [panel center];

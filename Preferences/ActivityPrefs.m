@@ -48,7 +48,7 @@
   self = [super init];
 
   if ([NSBundle loadNibNamed:@"ActivityMonitor" owner:self] == NO) {
-    NSLog(@"Failed to load ActivityMonitor NIB.");
+    NSDebugLLog(@"term", @"Failed to load ActivityMonitor NIB.");
   }
 
   return self;

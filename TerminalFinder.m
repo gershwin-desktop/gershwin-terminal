@@ -87,7 +87,7 @@ static id sharedFindObject = nil;
 {
   if (!findTextField) {
     if (![NSBundle loadNibNamed:@"Find" owner:self]) {
-      NSLog(@"Failed to load Find.gorm");
+      NSDebugLLog(@"term", @"Failed to load Find.gorm");
       NSBeep();
     }
     if (self == sharedFindObject) {
@@ -154,7 +154,7 @@ static id sharedFindObject = nil;
 
   tView = [[[NSApp delegate] terminalWindowForWindow:[NSApp mainWindow]] terminalView];
 
-  NSLog(@"TerminalView: %@", tView);
+  NSDebugLLog(@"term", @"TerminalView: %@", tView);
 
   lastFindWasSuccessful = NO;
 
@@ -162,7 +162,7 @@ static id sharedFindObject = nil;
     NSString *textContents = [[tView stringRepresentation] copy];
     NSUInteger textLength;
 
-    NSLog(@"Terminal contents length: %lu", [textContents length]);
+    NSDebugLLog(@"term", @"Terminal contents length: %lu", [textContents length]);
 
     if (textContents && (textLength = [textContents length])) {
       NSRange range;

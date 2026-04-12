@@ -1049,7 +1049,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   l = write(master_fd, msg, len);
   if (l != len) {
     if (errno != EAGAIN)
-      NSLog(@"Unexpected error while writing: %m.");
+      NSDebugLLog(@"term", @"Unexpected error while writing: %m.");
     if (l < 0) {
       l = 0;
     }
@@ -1996,7 +1996,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   l = write(master_fd, write_buf, write_buf_len);
   if (l < 0) {
     if (errno != EAGAIN) {
-      NSLog(@"Unexpected error while writing: %m.");
+      NSDebugLLog(@"term", @"Unexpected error while writing: %m.");
     }
     return;
   }
@@ -2092,7 +2092,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
   if (d) {
     if (pipe(pipefd)) {
-      NSLog(@"Unable to open pipe for input: %m.");
+      NSDebugLLog(@"term", @"Unable to open pipe for input: %m.");
       return -1;
     }
     NSDebugLLog(@"pty", @"creating pipe for initial data, got %i %i", pipefd[0], pipefd[1]);
@@ -2103,7 +2103,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   tty_name = malloc(128 * sizeof(char));  // 128 should be enough?
   pid = forkpty(&master_fd, tty_name, NULL, &ws);
   if (pid < 0) {
-    NSLog(@"Unable to fork: %m.");
+    NSDebugLLog(@"term", @"Unable to fork: %m.");
     return pid;
   }
 
@@ -2142,7 +2142,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   /* Set non-blocking mode for the descriptor. */
   flags = fcntl(master_fd, F_GETFL, 0);
   if (flags == -1) {
-    NSLog(@"Unable to set non-blocking mode: %m.");
+    NSDebugLLog(@"term", @"Unable to set non-blocking mode: %m.");
   } else {
     flags |= O_NONBLOCK;
     fcntl(master_fd, F_SETFL, flags);
@@ -2351,7 +2351,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   if (scrollback == NULL || alloc_sb_depth == 0) {  // Initialize
     new_scrollback = malloc(new_sb_size);
     if (new_scrollback == NULL) {
-      NSLog(@"EROOR: failed to allocate scrollback buffer of depth %d (error: %s)", new_sb_depth,
+      NSDebugLLog(@"term", @"EROOR: failed to allocate scrollback buffer of depth %d (error: %s)", new_sb_depth,
             strerror(errno));
       return NO;
     }
@@ -2371,7 +2371,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
     new_scrollback = realloc(scrollback, new_sb_size);
     if (new_scrollback == NULL) {
-      NSLog(@"ERROR: failed to re-allocate scrollback buffer to %d lines (error: %s)\n",
+      NSDebugLLog(@"term", @"ERROR: failed to re-allocate scrollback buffer to %d lines (error: %s)\n",
             new_sb_depth, strerror(errno));
       free(used_sb_copy);
       return NO;
@@ -2576,7 +2576,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   nscreen = malloc(nsx * nsy * sizeof(screen_char_t));
   new_sb_buffer = malloc(nsx * alloc_sb_depth * sizeof(screen_char_t));
   if (!nscreen || !new_sb_buffer) {
-    NSLog(@"Failed to allocate screen buffer!");
+    NSDebugLLog(@"term", @"Failed to allocate screen buffer!");
     if (nscreen)
       free(nscreen);
     if (new_sb_buffer)
@@ -2779,7 +2779,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
     DESTROY(tmp);
   }
 
-  NSLog(@"TerminalView stringRepresentation length: %lu", [mstr length]);
+  NSDebugLLog(@"term", @"TerminalView stringRepresentation length: %lu", [mstr length]);
 
   return mstr;
 }

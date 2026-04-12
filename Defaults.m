@@ -108,7 +108,7 @@ static Defaults *shared = nil;
   }
 
   if (defaults) {
-    NSLog(@"Defaults: error loading file");
+    NSDebugLLog(@"term", @"Defaults: error loading file");
     return nil;
   }
 

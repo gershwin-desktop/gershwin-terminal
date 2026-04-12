@@ -1410,7 +1410,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         /* TODO: there might be other cases where we should clear the
            buffer */
         if (input_buf_len == sizeof(input_buf)) {
-          NSLog(@"Warning: iconv() input buffer overrun!");
+          NSDebugLLog(@"term", @"Warning: iconv() input buffer overrun!");
           input_buf_len = 0;
         }
         input_buf[input_buf_len++] = c;
@@ -1809,15 +1809,15 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
     iconv_state = iconv_open("UCS-4", iconv_charset);
     if (iconv_state == (iconv_t)-1) {
       iconv_state = NULL;
-      NSLog(@"Warning: unable to create iconv handle for conversion from '%s'!", iconv_charset);
-      NSLog(@"Falling back to ISO-8859-1 (Latin1).");
+      NSDebugLLog(@"term", @"Warning: unable to create iconv handle for conversion from '%s'!", iconv_charset);
+      NSDebugLLog(@"term", @"Falling back to ISO-8859-1 (Latin1).");
     }
 
     iconv_input_state = iconv_open(iconv_charset, "UCS-4");
     if (iconv_input_state == (iconv_t)-1) {
       iconv_input_state = NULL;
-      NSLog(@"Warning: unable to create iconv handle for conversion to '%s'!", iconv_charset);
-      NSLog(@"Falling back to ISO-8859-1 (Latin1).");
+      NSDebugLLog(@"term", @"Warning: unable to create iconv handle for conversion to '%s'!", iconv_charset);
+      NSDebugLLog(@"term", @"Falling back to ISO-8859-1 (Latin1).");
     }
   } else {
     if (iconv_state) {

@@ -106,7 +106,7 @@
   self = [super init];
   if (panel == nil) {
     if ([NSBundle loadNibNamed:@"TerminalServices" owner:self] == NO) {
-      NSLog(@"Error loading NIB TerminalServices");
+      NSDebugLLog(@"term", @"Error loading NIB TerminalServices");
       return self;
     }
   }

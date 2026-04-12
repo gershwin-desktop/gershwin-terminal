@@ -208,13 +208,13 @@ static NSDictionary *servicesDictionary = nil;
 
   // "Accept"
   data = nil;
-  NSLog(@"NSStringPboardType: %@", [pb stringForType:NSStringPboardType]);
+  NSDebugLLog(@"term", @"NSStringPboardType: %@", [pb stringForType:NSStringPboardType]);
   if (input && (accepttypes & ACCEPT_STRING) && (data = [pb stringForType:NSStringPboardType])) {
-    NSLog(@"Got NSStringPboardType");
+    NSDebugLLog(@"term", @"Got NSStringPboardType");
   } else if (input && (accepttypes & ACCEPT_FILENAMES) &&
              (data = [pb propertyListForType:NSFilenamesPboardType])) {
     NSDebugLLog(@"service", @"got filenames '%@' '%@' %i", data, [data class], [data isProxy]);
-    NSLog(@"Got NSFilenamesPboardType");
+    NSDebugLLog(@"term", @"Got NSFilenamesPboardType");
   }
 
   NSDebugLLog(@"service", @"got data '%@'", data);
@@ -227,7 +227,7 @@ static NSDictionary *servicesDictionary = nil;
     if (data && [data isKindOfClass:[NSArray class]])
       data = [(NSArray *)data componentsJoinedByString:@" "];
   }
-  NSLog(@"Services: got data: %@", data);
+  NSDebugLLog(@"term", @"Services: got data: %@", data);
 
   // Process 'Command' service parameter
   {
@@ -276,13 +276,13 @@ static NSDictionary *servicesDictionary = nil;
       }
     }
 
-    NSLog(@"Services: got cmdline: %@", cmdline);
+    NSDebugLLog(@"term", @"Services: got cmdline: %@", cmdline);
 
     // No Shell/Default shell
     if (shell) {
       program = [[Defaults shared] shell];
       program = [program stringByAppendingFormat:@" -c %@", cmdline];
-      NSLog(@"Command line with default shell: %@", program);
+      NSDebugLLog(@"term", @"Command line with default shell: %@", program);
 
       arguments = [program componentsSeparatedByString:@" "];
       program = [arguments objectAtIndex:0];
@@ -435,7 +435,7 @@ static NSDictionary *servicesDictionary = nil;
 
   if (addArgsPanel == nil) {
     if ([NSBundle loadNibNamed:@"AddArguments" owner:self] == NO) {
-      NSLog(@"Error loading NIB AddArguments");
+      NSDebugLLog(@"term", @"Error loading NIB AddArguments");
       return nil;
     }
   }
