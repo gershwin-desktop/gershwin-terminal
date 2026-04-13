@@ -24,3 +24,7 @@ ADDITIONAL_LIB_DIRS +=
 ADDITIONAL_GUI_LIBS += 
 
 ADDITIONAL_LDFLAGS += -lutil
+
+ifeq ($(findstring freebsd,$(GNUSTEP_TARGET_OS)),freebsd)
+ADDITIONAL_LDFLAGS += -liconv
+endif
