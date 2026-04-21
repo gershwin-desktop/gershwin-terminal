@@ -478,12 +478,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     }
   }
 
-  /* draw vertical black line next after scrollbar */
-  if ((alloc_sb_depth > 0) && (r.origin.x < border_x)) {
-    DPSsetgray(cur, 0.0);
-    DPSrectfill(cur, r.origin.x, r.origin.y, r.origin.x + 1, r.size.height);
-  }
-
   /* figure out what character cells might need redrawing */
   r.origin.x -= border_x;
   r.origin.y -= border_y;
