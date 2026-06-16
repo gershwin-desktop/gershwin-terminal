@@ -72,6 +72,7 @@ complete. (TODO check this) */
 @optional
 - (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter;
 - (void)ts_setCursorShape:(int)shape;
+- (void)ts_setCursorVisible:(BOOL)visible;
 - (void)ts_getBackgroundRGBR:(double *)r G:(double *)g B:(double *)b;
 
 @end

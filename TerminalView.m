@@ -682,7 +682,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
         //--- FOREGROUND
         /* ~1700 cycles/change */
-        if ((ch->attr & 0x02) || (ch->ch != 0 && ch->ch != 32)) {
+        if ((ch->attr & 0x02) || (ch->ch != 0 && ch->ch != 32) || (ch->attr & 0x1C)) {
           if (ch->attr & 0x8) {  //-------------------------------- FG INVERSE
             color = ch->color & 0xf0;
             if (ch->attr & 0x40) {
@@ -826,7 +826,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
 
   //------------------- CURSOR ----------------------------------------------------
-  if (shouldDrawCursor) {
+  if (shouldDrawCursor && cursorVisible) {
     float x, y;
     [cursorColor set];
 
@@ -960,6 +960,25 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 {
   /* Accept but currently do not change the visual cursor shape. */
   (void)shape;
+}
+
+- (void)ts_setCursorVisible:(BOOL)visible
+{
+  cursorVisible = visible;
+  if (visible) {
+    SCREEN(cursor_x, cursor_y).attr |= 0x80;
+    shouldDrawCursor = YES;
+    ADD_DIRTY(cursor_x, cursor_y, 1, 1);
+  } else {
+    /* Mark the current cursor cell dirty so it gets redrawn
+       without the cursor overlay on the next frame. */
+    SCREEN(cursor_x, cursor_y).attr |= 0x80;
+    ADD_DIRTY(cursor_x, cursor_y, 1, 1);
+    shouldDrawCursor = NO;
+  }
+  [self setNeedsLazyDisplayInRect:NSMakeRect(border_x, border_y,
+                                             screen_width * fx,
+                                             screen_height * fy)];
 }
 
 - (void)ts_putChar:(screen_char_t)ch count:(int)c offset:(int)ofs
@@ -2461,6 +2480,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   shouldScrollBottomOnInput = [defaults scrollBottomOnInput];
   max_sb_depth = [defaults scrollBackLines];
   [self resizeScrollbackBuffer:YES];
+
+  cursorVisible = YES;
 
   terminalParser = [[TerminalParser_Linux alloc] initWithTerminalScreen:self
                                                                   width:screen_width

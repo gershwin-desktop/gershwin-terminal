@@ -94,6 +94,7 @@
 #define background (color & 0xf0)
 
   screen_char_t video_erase_char;
+  screen_char_t last_drawn_char; /* for REP (repeat last graphic) */
 
 #define NPAR 16
   int npar;

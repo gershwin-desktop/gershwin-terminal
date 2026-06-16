@@ -183,6 +183,10 @@ static const unichar *_set_translate(int charset)
   deccm = 1;
   decim = 0;
 
+  if ([(NSObject *)ts respondsToSelector:@selector(ts_setCursorVisible:)]) {
+    [(id)ts ts_setCursorVisible:YES];
+  }
+
 #if 0
   set_kbd(decarm);
   clr_kbd(decckm);
@@ -200,6 +204,7 @@ static const unichar *_set_translate(int charset)
 
   [self _default_attr];
   [self _update_attr];
+  last_drawn_char = video_erase_char;
 
   tab_stop[0] = 0x01010100;
   tab_stop[1] = tab_stop[2] = tab_stop[3] = tab_stop[4] = tab_stop[5] = tab_stop[6] = tab_stop[7] =
@@ -617,6 +622,9 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
           break;
         case 25: /* Cursor on/off */
           deccm = on_off;
+          if ([(NSObject *)ts respondsToSelector:@selector(ts_setCursorVisible:)]) {
+            [(id)ts ts_setCursorVisible:!!on_off];
+          }
           break;
         case 1000: /* X11 mouse: button press/release */
           mouse_mode = on_off ? 1000 : 0;
@@ -1271,6 +1279,46 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         case '@':
           csi_at(currcons, par[0]);
           return;
+        case 'b': /* REP - ECMA-48 Repeat preceding character */
+          if (!par[0])
+            par[0] = 1;
+          {
+            int _rep_i;
+            for (_rep_i = 0; _rep_i < par[0]; _rep_i++) {
+              screen_char_t rch = last_drawn_char;
+              int char_width;
+
+              /* --- same logic as PUTCH macro --- */
+              if ((x >= width) && decawm) {
+                x = 0;
+                [ts ts_gotoX:x Y:y];
+                if ((y + 1) == bottom) {
+                  scrup(foo, top, bottom, 1,
+                        (top == 0 && bottom == height) ? YES : NO);
+                } else if (y < (height - 1)) {
+                  y++;
+                  [ts ts_gotoX:x Y:y];
+                }
+              }
+              char_width = [ts relativeWidthOfCharacter:rch.ch];
+              if (decim)
+                [ts ts_shiftRow:y at:x delta:char_width];
+              [ts ts_putChar:rch count:1 atX:x Y:y];
+              if (x < width) {
+                x++;
+                char_width--;
+                if ((char_width + x) > width)
+                  char_width = width - x;
+                if (char_width > 0) {
+                  rch.ch = MULTI_CELL_GLYPH;
+                  [ts ts_putChar:rch count:char_width atX:x Y:y];
+                  x += char_width;
+                }
+                [ts ts_gotoX:x Y:y];
+              }
+            }
+          }
+          return;
         case ']': /* setterm functions */
           setterm_command(currcons);
           return;
@@ -1370,9 +1418,25 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         if (toggle_meta) {
           c |= 0x80;
         }
+        /* When 'display control' mode is active (set via ANSI
+           mode 3, SGR 11/12, or SO), map control characters to
+           their visible caret representation (^@, ^A, …, ^_) so
+           they appear as printable glyphs instead of being
+           silently rendered as invisible control codepoints. */
+        if (disp_ctrl) {
+          if (c < 32 && c != 0) {
+            c += '@';  /* 0x01 → 'A', 0x02 → 'B', …, 0x1F → '_' */
+          } else if (c == 0) {
+            c = '@';   /* NUL → '@' (display as ^@) */
+          } else if (c == 127) {
+            c = '?';   /* DEL → '?' (display as ^?) */
+          }
+        }
         unich = translate[c];
       } else
 #define PUTCH                                        \
+  if (ch.ch != MULTI_CELL_GLYPH)                      \
+    last_drawn_char = ch;                             \
   if ((x >= width) && decawm) {                      \
     cr();                                            \
     lf();                                            \
