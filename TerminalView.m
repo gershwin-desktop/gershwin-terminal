@@ -1557,6 +1557,50 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   [self _setSelection:s];
 }
 
+// Context menu on right-click
+- (void)rightMouseDown:(NSEvent *)event
+{
+  NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Terminal Context Menu"];
+  id<NSMenuItem> item;
+
+  // Copy
+  item = [menu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@""];
+  [item setTarget:self];
+  if (selection.length <= 0)
+    [item setEnabled:NO];
+
+  // Paste
+  item = [menu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@""];
+  [item setTarget:self];
+
+  // Paste Selection
+  item = [menu addItemWithTitle:@"Paste Selection"
+                         action:@selector(pasteSelection:)
+                  keyEquivalent:@""];
+  [item setTarget:self];
+  if (selection.length <= 0)
+    [item setEnabled:NO];
+
+  [menu addItem:[NSMenuItem separatorItem]];
+
+  // Select All
+  item = [menu addItemWithTitle:@"Select All"
+                         action:@selector(selectAll:)
+                  keyEquivalent:@""];
+  [item setTarget:self];
+
+  // Clear Buffer
+  item = [menu addItemWithTitle:@"Clear Buffer"
+                         action:@selector(clearBuffer:)
+                  keyEquivalent:@""];
+  [item setTarget:self];
+  if (curr_sb_depth <= 0)
+    [item setEnabled:NO];
+
+  [NSMenu popUpContextMenu:menu withEvent:event forView:self];
+  RELEASE(menu);
+}
+
 // Menu item "Edit > Copy"
 - (void)copy:(id)sender
 {
