@@ -1799,6 +1799,37 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     p = [e locationInWindow];
 
     p = [self convertPoint:p fromView:nil];
+
+    // Auto-scroll when mouse is dragged beyond visible area
+    BOOL autoScrolling = NO;
+    {
+      int mouseRow = ceil((p.y - border_y) / fy);
+
+      if (mouseRow >= screen_height && curr_sb_position > -curr_sb_depth) {
+        // Mouse above visible area, scroll up into scrollback
+        int distance = mouseRow - screen_height + 1;
+        int scrollAmount = distance / 3;
+        if (scrollAmount < 1) scrollAmount = 1;
+        int new_scroll = curr_sb_position - scrollAmount;
+        if (new_scroll < -curr_sb_depth) new_scroll = -curr_sb_depth;
+        curr_sb_position = new_scroll;
+        [self _updateScroller];
+        [self setNeedsDisplay:YES];
+        autoScrolling = YES;
+      } else if (mouseRow < 0 && curr_sb_position < 0) {
+        // Mouse below visible area, scroll down toward bottom
+        int distance = -mouseRow;
+        int scrollAmount = distance / 3;
+        if (scrollAmount < 1) scrollAmount = 1;
+        int new_scroll = curr_sb_position + scrollAmount;
+        if (new_scroll > 0) new_scroll = 0;
+        curr_sb_position = new_scroll;
+        [self _updateScroller];
+        [self setNeedsDisplay:YES];
+        autoScrolling = YES;
+      }
+    }
+
     p.x = floor((p.x - border_x) / fx);
     if (p.x < 0)
       p.x = 0;
@@ -1839,7 +1870,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
     e = [NSApp nextEventMatchingMask:(NSLeftMouseDownMask | NSLeftMouseUpMask |
                                       NSLeftMouseDraggedMask | NSMouseMovedMask)
-                           untilDate:[NSDate distantFuture]
+                           untilDate:autoScrolling
+                                       ? [NSDate dateWithTimeIntervalSinceNow:0.05]
+                                       : [NSDate distantFuture]
                               inMode:NSEventTrackingRunLoopMode
                              dequeue:YES];
   }
