@@ -32,7 +32,6 @@ Terminal_OBJC_FILES = \
 	TerminalView.m \
 	TerminalParser_Linux.m \
 	\
-	InfoPanel.m\
 	\
 	TerminalFinder.m \
 	TerminalIcon.m \
@@ -45,7 +44,6 @@ Terminal_LOCALIZED_RESOURCE_FILES = \
 	TerminalServices.gorm \
 	SaveAsAccessory.gorm \
 	AddArguments.gorm \
-	Info.gorm \
 	Find.gorm
 
 Terminal_RESOURCE_FILES = \
@@ -53,6 +51,7 @@ Terminal_RESOURCE_FILES = \
 	Resources/ExampleServices.svcs \
 	Resources/Terminal.tiff \
 	Resources/ScrollingMach.tiff \
+	Resources/TerminalInfo.plist \
 	Resources/ScrollingOutput.tiff
 
 -include GNUmakefile.preamble

@@ -17,7 +17,6 @@
 */
 
 #import <sys/wait.h>
-#include "InfoPanel.h"
 
 #import "Defaults.h"
 
@@ -78,10 +77,27 @@
 // Info > Info Panel...
 - (void)openInfoPanel:(id)sender
 {
-  if (infoPanel == nil) {
-    infoPanel = [[InfoPanel alloc] init];
-  }
-  [infoPanel activatePanel];
+  if (infoPanel == nil)
+    {
+      NSString *plistPath;
+      NSDictionary *options;
+
+      plistPath = [[NSBundle mainBundle] pathForResource: @"TerminalInfo"
+                                                   ofType: @"plist"];
+      if (plistPath)
+        {
+          options = [NSDictionary dictionaryWithContentsOfFile: plistPath];
+        }
+      else
+        {
+          options = nil;
+        }
+
+      infoPanel = [[GSInfoPanel alloc] initWithDictionary: options];
+      [infoPanel setReleasedWhenClosed: NO];
+      [infoPanel center];
+    }
+  [infoPanel makeKeyAndOrderFront: self];
 }
 
 // Info > Preferences
@@ -433,10 +449,11 @@
     [setTitlePanel release];
   }
   if (infoPanel) {
-    [infoPanel closePanel];
+    [infoPanel close];
     [infoPanel release];
+    infoPanel = nil;
   }
-  
+
   // Clear font pasteboard data
   NSPasteboard *pb = [NSPasteboard pasteboardWithName:NSFontPboard];
   if ([pb dataForType:NSFontPboardType] != nil) {

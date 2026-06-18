@@ -18,6 +18,7 @@
 #import <AppKit/NSScroller.h>
 #import <AppKit/NSWindow.h>
 
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #import <GNUstepGUI/GSDisplayServer.h>
 
@@ -134,6 +135,29 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   [win release];
 
   return self;
+}
+
+- (void)showWindow:(id)sender
+{
+  [super showWindow:sender];
+
+  // Hint the compositor to bypass (unredirect) this opaque terminal window.
+  // This must be done after the window is first ordered on screen, because
+  // with defer:YES the X11 window isn't created until orderFront: is called
+  // by showWindow:.  Setting it in _setupWindow is too early.
+  {
+    GSDisplayServer *server = GSCurrentServer();
+    Display *dpy = (Display *)[server serverDevice];
+    Window xwin = (Window)(intptr_t)[server windowDevice:[win windowNumber]];
+
+    if (dpy && xwin)
+      {
+        Atom bypassAtom = XInternAtom(dpy, "_NET_WM_BYPASS_COMPOSITOR", False);
+        unsigned long value = 1;
+        XChangeProperty(dpy, xwin, bypassAtom, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)&value, 1);
+      }
+  }
 }
 
 - init

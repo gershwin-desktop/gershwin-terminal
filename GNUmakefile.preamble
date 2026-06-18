@@ -23,7 +23,7 @@ ADDITIONAL_LIB_DIRS +=
 # Additional GUI libraries to link
 ADDITIONAL_GUI_LIBS += 
 
-ADDITIONAL_LDFLAGS += -lutil
+ADDITIONAL_LDFLAGS += -lutil -lX11
 
 ifeq ($(findstring freebsd,$(GNUSTEP_TARGET_OS)),freebsd)
 ADDITIONAL_LDFLAGS += -liconv

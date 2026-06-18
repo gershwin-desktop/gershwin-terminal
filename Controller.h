@@ -22,7 +22,7 @@
 #import "SetTitlePanel.h"
 #import "TerminalWindow.h"
 #import "TerminalServicesPanel.h"
-#import "InfoPanel.h"
+#import <GNUstepGUI/GSInfoPanel.h>
 
 @interface Controller : NSObject <NSMenuValidation>
 {
@@ -38,7 +38,7 @@
   Preferences *preferencesPanel;
   TerminalServicesPanel *servicesPanel;
   SetTitlePanel *setTitlePanel;
-  InfoPanel *infoPanel;
+  GSInfoPanel *infoPanel;
 
   // Find
   NSWindow *findPanel;
