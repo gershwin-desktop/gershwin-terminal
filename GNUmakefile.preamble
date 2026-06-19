@@ -28,3 +28,10 @@ ADDITIONAL_LDFLAGS += -lutil -lX11
 ifeq ($(findstring freebsd,$(GNUSTEP_TARGET_OS)),freebsd)
 ADDITIONAL_LDFLAGS += -liconv
 endif
+
+# On OpenBSD, iconv is provided by GNU libiconv (its header rewrites iconv_* to
+# libiconv_*), so the iconv symbols live in libiconv rather than libc and must
+# be linked explicitly.
+ifeq ($(findstring openbsd,$(GNUSTEP_TARGET_OS)),openbsd)
+ADDITIONAL_LDFLAGS += -liconv
+endif
