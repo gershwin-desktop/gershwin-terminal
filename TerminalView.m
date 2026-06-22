@@ -61,6 +61,7 @@
 
 #import <AppKit/AppKit.h>
 #import <GNUstepBase/Unicode.h>
+#import <Foundation/NSTask.h>
 
 #import "TerminalWindow.h"
 #import "TerminalView.h"
@@ -254,6 +255,14 @@ NSString *TerminalViewSizeDidChangeNotification = @"TerminalViewSizeDidChange";
 
 
 #pragma mark - Display
+
+// Forward declarations for URL/link helper methods (used by display, keyboard,
+// and selection categories below).
+@interface TerminalView (URLHelpers)
+- (int)_scanURLsInRow:(int)row mask:(BOOL *)mask urlStrings:(NSString **)urlStrings maxURLs:(int)maxURLs;
+- (BOOL)_isURLAtCol:(int)col row:(int)row;
+- (NSString *)_urlAtCol:(int)col row:(int)row;
+@end
 
 //------------------------------------------------------------------------------
 //--- TerminalScreen protocol implementation and rendering methods
@@ -658,6 +667,97 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     last_rgb_flags = 0;
     last_fg_rgb = 0xFFFFFFFF;
     last_bg_rgb = 0xFFFFFFFF;
+
+    // Pre-scan all dirty rows for http:// and https:// links,
+    // including URLs that wrap across multiple lines.
+    int totalDirtyRows = y1 - y0;
+    BOOL *urlMasks = NULL;
+    NSString *combinedStr = nil;
+    if (totalDirtyRows > 0 && screen_width > 0)
+      {
+        urlMasks = malloc(totalDirtyRows * screen_width * sizeof(BOOL));
+        memset(urlMasks, 0, totalDirtyRows * screen_width * sizeof(BOOL));
+
+        unichar combinedBuf[totalDirtyRows * screen_width];
+        int combinedLen = 0;
+        for (iy = y0; iy < y1; iy++)
+          {
+            ry = iy + curr_sb_position;
+            screen_char_t *rowCh;
+            if (ry >= 0) rowCh = &SCREEN(0, ry);
+            else rowCh = &scrollback[(alloc_sb_depth + ry) * screen_width];
+            for (ix = 0; ix < screen_width; ix++)
+              combinedBuf[combinedLen++] = (rowCh[ix].ch == 0) ? ' ' : rowCh[ix].ch;
+          }
+
+        combinedStr = [[NSString alloc] initWithCharacters:combinedBuf
+                                                   length:combinedLen];
+        NSRange sRange = {0, combinedLen};
+        while (sRange.location < combinedLen)
+          {
+            NSRange r = [combinedStr rangeOfString:@"http"
+                                           options:0
+                                             range:sRange];
+            if (r.location == NSNotFound) break;
+            int urlStart = (int)r.location;
+            int remaining = combinedLen - urlStart;
+            int schemeLen = 0;
+            if (remaining >= 7 &&
+                [combinedStr characterAtIndex:urlStart + 4] == ':' &&
+                [combinedStr characterAtIndex:urlStart + 5] == '/' &&
+                [combinedStr characterAtIndex:urlStart + 6] == '/')
+              schemeLen = 7;
+            else if (remaining >= 8 &&
+                     [combinedStr characterAtIndex:urlStart + 4] == 's' &&
+                     [combinedStr characterAtIndex:urlStart + 5] == ':' &&
+                     [combinedStr characterAtIndex:urlStart + 6] == '/' &&
+                     [combinedStr characterAtIndex:urlStart + 7] == '/')
+              schemeLen = 8;
+            else
+              {
+                sRange.location = r.location + 1;
+                sRange.length = combinedLen - sRange.location;
+                continue;
+              }
+
+            int urlEnd = urlStart + schemeLen;
+            while (urlEnd < combinedLen)
+              {
+                unichar c = combinedBuf[urlEnd];
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+                    c == '"' || c == '\'' || c == '<' || c == '>' ||
+                    c == '\\' || c == '`' || c == '|' || c == 0)
+                  break;
+                urlEnd++;
+              }
+            while (urlEnd > urlStart + schemeLen)
+              {
+                unichar c = combinedBuf[urlEnd - 1];
+                if (c == '.' || c == ',' || c == ':' || c == ';' ||
+                    c == '!' || c == '?' || c == ')' || c == ']')
+                  urlEnd--;
+                else
+                  break;
+              }
+
+            // Map URL range back to rows and fill the masks
+            int startRO = urlStart / screen_width;
+            int startC = urlStart % screen_width;
+            int endRO = (urlEnd - 1) / screen_width;
+            int endC = (urlEnd - 1) % screen_width;
+            for (int ri = startRO; ri <= endRO && ri < totalDirtyRows; ri++)
+              {
+                int cs = (ri == startRO) ? startC : 0;
+                int ce = (ri == endRO) ? endC : screen_width - 1;
+                for (int cj = cs; cj <= ce && cj < screen_width; cj++)
+                  urlMasks[ri * screen_width + cj] = YES;
+              }
+
+            sRange.location = urlEnd;
+            sRange.length = combinedLen - sRange.location;
+          }
+      }
+
     /* Now draw any dirty characters */
     for (iy = y0; iy < y1; iy++) {
       ry = iy + curr_sb_position;
@@ -668,6 +768,16 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
       }
 
       scr_y = (screen_height - 1 - iy) * fy + border_y;
+
+      // URL mask for this row — lookup from pre-scan
+      int rowIdx = iy - y0;
+      BOOL urlMask[screen_width];
+      if (urlMasks)
+        for (int i_ = 0; i_ < screen_width; i_++)
+          urlMask[i_] = urlMasks[rowIdx * screen_width + i_];
+      else
+        memset(urlMask, 0, sizeof(urlMask));
+      BOOL wasURL = NO;
 
       for (ix = x0; ix < x1; ix++, ch++) {
         /* no need to draw && not dirty */
@@ -725,14 +835,19 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
             }
 
             if (color != last_color || ch->attr != last_attr ||
+                urlMask[ix] != wasURL ||
                 (ch->rgb_flags & SC_FG_RGB) != (last_rgb_flags & SC_FG_RGB) ||
                 ((ch->rgb_flags & SC_FG_RGB) && ch->fg_rgb != last_fg_rgb)) {
               last_color = color;
               last_attr = ch->attr;
+              wasURL = urlMask[ix];
               last_rgb_flags = (last_rgb_flags & ~SC_FG_RGB) | (ch->rgb_flags & SC_FG_RGB);
               last_fg_rgb = ch->fg_rgb;
 
-              if (ch->rgb_flags & SC_FG_RGB) {
+              if (urlMask[ix]) {
+                // Link color — blue
+                DPSsetrgbcolor(cur, 0.2, 0.2, 0.85);
+              } else if (ch->rgb_flags & SC_FG_RGB) {
                 float rr = ((ch->fg_rgb >> 16) & 0xff) / 255.0;
                 float gg = ((ch->fg_rgb >> 8) & 0xff) / 255.0;
                 float bb = (ch->fg_rgb & 0xff) / 255.0;
@@ -754,6 +869,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
             f = boldFont;
             if ((ch->color & 0x0f) == 15) {
               DPSsethsbcolor(cur, TEXT_BOLD_H, TEXT_BOLD_S, TEXT_BOLD_B);
+            }
+            if (urlMask[ix]) {
+              DPSsetrgbcolor(cur, 0.2, 0.2, 0.85);
             }
           } else {
             encoding = font_encoding;
@@ -817,12 +935,17 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
           /* ~3800 cycles total */
         }
 
-        //--- UNDERLINE
-        if (ch->attr & 0x4) {
+        //--- UNDERLINE — SGR underline or URL link
+        if ((ch->attr & 0x4) || urlMask[ix]) {
           DPSrectfill(cur, scr_x, scr_y, fx, 1);
         }
+
+        wasURL = urlMask[ix];
       }
     }
+
+    [combinedStr release];
+    free(urlMasks);
   }
 
   //------------------- CURSOR ----------------------------------------------------
@@ -1340,6 +1463,32 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
 }
 
+- (void)viewDidMoveToWindow
+{
+  [super viewDidMoveToWindow];
+  [[self window] setAcceptsMouseMovedEvents:YES];
+}
+
+- (void)mouseMoved:(NSEvent *)event
+{
+  NSPoint p = [self convertPoint:[event locationInWindow] fromView:nil];
+  int col = floor((p.x - border_x) / fx);
+  int row = ceil((p.y - border_y) / fy);
+
+  if (col < 0 || col >= screen_width || row < 0 || row > screen_height) {
+    [[NSCursor IBeamCursor] set];
+    return;
+  }
+
+  row = screen_height - row + curr_sb_position;
+
+  if ([self _isURLAtCol:col row:row]) {
+    [[NSCursor pointingHandCursor] set];
+  } else {
+    [[NSCursor IBeamCursor] set];
+  }
+}
+
 - (void)keyDown:(NSEvent *)e
 {
   NSString *s = [e charactersIgnoringModifiers];
@@ -1828,6 +1977,23 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (void)mouseDown:(NSEvent *)e
 {
+  // Check if the click is on a URL — if so, open it in the browser
+  NSPoint clickPoint = [self convertPoint:[e locationInWindow] fromView:nil];
+  int clickCol = floor((clickPoint.x - border_x) / fx);
+  int clickRow = ceil((clickPoint.y - border_y) / fy);
+  if (clickCol >= 0 && clickCol < screen_width && clickRow >= 0 && clickRow <= screen_height) {
+    clickRow = screen_height - clickRow + curr_sb_position;
+    NSString *url = [self _urlAtCol:clickCol row:clickRow];
+    if (url) {
+      NSTask *task = [NSTask new];
+      [task setLaunchPath:@"/usr/bin/env"];
+      [task setArguments:@[@"open", url]];
+      [task launch];
+      RELEASE(task);
+      return;
+    }
+  }
+
   int ofs0, ofs1, first;
   NSPoint p;
   struct selection_range s;
@@ -3194,6 +3360,215 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   curr_sb_position = 0;
   [self _updateScroller];
   [self setNeedsDisplay:YES];
+}
+
+#pragma mark - URL/Link detection
+
+// Characters that terminate a detected URL.
+#define URL_END_CHAR(c) \
+  ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r' || \
+   (c) == '"' || (c) == '\'' || (c) == '<' || (c) == '>' || \
+   (c) == '\\' || (c) == '`' || (c) == '|' || (c) == 0)
+
+// Scan a single row of the screen/scrollback buffer for http:// and https://
+// URLs.  Fills `mask` (a BOOL array of length screen_width) with YES at every
+// character position that belongs to a link.  If `urlStrings` is non-NULL,
+// stores up to `maxURLs` NSString pointers (caller must release).  Returns
+// the number of URLs found.
+- (int)_scanURLsInRow:(int)row
+                 mask:(BOOL *)mask
+           urlStrings:(NSString **)urlStrings
+              maxURLs:(int)maxURLs
+{
+  screen_char_t *ch;
+  if (row >= 0) {
+    ch = &SCREEN(0, row);
+  } else {
+    ch = &scrollback[(alloc_sb_depth + row) * screen_width];
+  }
+
+  // Build row string, zero the mask
+  unichar buf[screen_width];
+  for (int i = 0; i < screen_width; i++) {
+    buf[i] = (ch[i].ch == 0) ? ' ' : ch[i].ch;
+    mask[i] = NO;
+  }
+  NSString *rowStr = [[NSString alloc] initWithCharacters:buf length:screen_width];
+
+  int urlCount = 0;
+  NSRange searchRange = NSMakeRange(0, screen_width);
+
+  while (searchRange.location < screen_width &&
+         (urlStrings == NULL || urlCount < maxURLs))
+    {
+      NSRange r = [rowStr rangeOfString:@"http"
+                                options:0
+                                  range:searchRange];
+      if (r.location == NSNotFound)
+        break;
+
+      int urlStart = (int)r.location;
+
+      // Verify http:// or https://
+      int schemeLen = 0;
+      if (urlStart + 7 <= screen_width &&
+          [rowStr characterAtIndex:urlStart + 4] == ':' &&
+          [rowStr characterAtIndex:urlStart + 5] == '/' &&
+          [rowStr characterAtIndex:urlStart + 6] == '/')
+        {
+          schemeLen = 7;
+        }
+      else if (urlStart + 8 <= screen_width &&
+               [rowStr characterAtIndex:urlStart + 4] == 's' &&
+               [rowStr characterAtIndex:urlStart + 5] == ':' &&
+               [rowStr characterAtIndex:urlStart + 6] == '/' &&
+               [rowStr characterAtIndex:urlStart + 7] == '/')
+        {
+          schemeLen = 8;
+        }
+      else
+        {
+          searchRange.location = r.location + 1;
+          searchRange.length = screen_width - searchRange.location;
+          continue;
+        }
+
+      // Find end of URL — stop at URL_END_CHAR, then strip trailing
+      // punctuation so "Visit http://x.com." yields the clean URL.
+      int urlEnd = urlStart + schemeLen;
+      while (urlEnd < screen_width)
+        {
+          unichar c = buf[urlEnd];
+          if (URL_END_CHAR(c))
+            break;
+          urlEnd++;
+        }
+      // Strip trailing punctuation
+      while (urlEnd > urlStart + schemeLen)
+        {
+          unichar c = buf[urlEnd - 1];
+          if (c == '.' || c == ',' || c == ':' || c == ';' ||
+              c == '!' || c == '?' || c == ')' || c == ']')
+            urlEnd--;
+          else
+            break;
+        }
+
+      // Mark mask and optionally store URL string
+      for (int i = urlStart; i < urlEnd; i++)
+        {
+          mask[i] = YES;
+        }
+      if (urlStrings && urlCount < maxURLs)
+        {
+          urlStrings[urlCount] =
+            [rowStr substringWithRange:NSMakeRange(urlStart, urlEnd - urlStart)];
+        }
+      urlCount++;
+
+      searchRange.location = urlEnd;
+      searchRange.length = screen_width - searchRange.location;
+    }
+
+  [rowStr release];
+  return urlCount;
+}
+
+// Returns YES if the character at (col, row) is part of a detected URL.
+- (BOOL)_isURLAtCol:(int)col row:(int)row
+{
+  return [self _urlAtCol:col row:row] != nil;
+}
+
+// If (col, row) falls on a URL, returns the full URL string; nil otherwise.
+// Handles URLs that wrap across multiple lines by building a combined buffer
+// of several rows around the clicked position.
+- (NSString *)_urlAtCol:(int)col row:(int)row
+{
+  if (col < 0 || col >= screen_width ||
+      row < -curr_sb_depth || row >= screen_height)
+    return nil;
+
+  // Build a combined character buffer for ~7 rows around (col,row) so we
+  // can detect multi-line URLs without scanning the whole screen.
+  int startRow = MAX(row - 3, -curr_sb_depth);
+  int endRow   = MIN(row + 3, screen_height - 1);
+  int numRows  = endRow - startRow + 1;
+  int totalChars = numRows * screen_width;
+
+  unichar buf[totalChars];
+  int offset = 0;
+  for (int r = startRow; r <= endRow; r++)
+    {
+      screen_char_t *ch;
+      if (r >= 0) ch = &SCREEN(0, r);
+      else        ch = &scrollback[(alloc_sb_depth + r) * screen_width];
+      for (int c = 0; c < screen_width; c++)
+        buf[offset++] = (ch[c].ch == 0) ? ' ' : ch[c].ch;
+    }
+
+  int absPos = (row - startRow) * screen_width + col;
+  NSString *combined = [[NSString alloc] initWithCharacters:buf length:totalChars];
+  NSString *foundURL = nil;
+
+  NSRange sRange = {0, totalChars};
+  while (sRange.location < totalChars)
+    {
+      NSRange r = [combined rangeOfString:@"http" options:0 range:sRange];
+      if (r.location == NSNotFound) break;
+      int urlStart = (int)r.location;
+      int remaining = totalChars - urlStart;
+      int schemeLen = 0;
+      if (remaining >= 7 &&
+          [combined characterAtIndex:urlStart + 4] == ':' &&
+          [combined characterAtIndex:urlStart + 5] == '/' &&
+          [combined characterAtIndex:urlStart + 6] == '/')
+        schemeLen = 7;
+      else if (remaining >= 8 &&
+               [combined characterAtIndex:urlStart + 4] == 's' &&
+               [combined characterAtIndex:urlStart + 5] == ':' &&
+               [combined characterAtIndex:urlStart + 6] == '/' &&
+               [combined characterAtIndex:urlStart + 7] == '/')
+        schemeLen = 8;
+      else
+        {
+          sRange.location = r.location + 1;
+          sRange.length = totalChars - sRange.location;
+          continue;
+        }
+
+      int urlEnd = urlStart + schemeLen;
+      while (urlEnd < totalChars)
+        {
+          unichar c = buf[urlEnd];
+          if (c == ' ' || c == '\t' || c == '\n' || c == '\r' ||
+              c == '"' || c == '\'' || c == '<' || c == '>' ||
+              c == '\\' || c == '`' || c == '|' || c == 0)
+            break;
+          urlEnd++;
+        }
+      while (urlEnd > urlStart + schemeLen)
+        {
+          unichar c = buf[urlEnd - 1];
+          if (c == '.' || c == ',' || c == ':' || c == ';' ||
+              c == '!' || c == '?' || c == ')' || c == ']')
+            urlEnd--;
+          else
+            break;
+        }
+
+      if (absPos >= urlStart && absPos < urlEnd)
+        {
+          foundURL = [combined substringWithRange:NSMakeRange(urlStart, urlEnd - urlStart)];
+          break;
+        }
+
+      sRange.location = urlEnd;
+      sRange.length = totalChars - sRange.location;
+    }
+
+  [combined release];
+  return foundURL;
 }
 
 - (void)benchmark:(id)sender
