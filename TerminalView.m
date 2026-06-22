@@ -2476,6 +2476,21 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 @implementation TerminalView (drag_n_drop)
 
+// Convert a file:// URI (or native path) to a single-quoted Unix path
+// so that whitespace in file names is handled correctly.
+static NSString *
+quotedPathFromDroppedString(NSString *str)
+{
+  NSString *path = str;
+  if ([str hasPrefix:@"file://"]) {
+    NSURL *url = [NSURL URLWithString:str];
+    if (url) {
+      path = [url path];
+    }
+  }
+  return [NSString stringWithFormat:@"'%@'", path];
+}
+
 static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDragOperationGeneric);
 
 - (unsigned int)draggingEntered:(id<NSDraggingInfo>)sender
@@ -2531,7 +2546,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
     c = [data count];
     for (i = 0; i < c; i++) {
-      [terminalParser sendString:[data objectAtIndex:i]];
+      [terminalParser sendString:quotedPathFromDroppedString([data objectAtIndex:i])];
       if (i < (c - 1)) {
         [terminalParser sendString:@" "];
       }
