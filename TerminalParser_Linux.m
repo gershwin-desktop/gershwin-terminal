@@ -1544,9 +1544,6 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
   }
 }
 
-/*
-  Translates '\n' to '\r' when sending.
-*/
 - (void)sendString:(NSString *)s
 {
   int l = [s length];
@@ -1562,8 +1559,6 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
 
     for (i = 0; i < l; i++) {
       ucs = [s characterAtIndex:i];
-      if (ucs == '\n')
-        ucs = '\r';
       ucs = htonl(ucs);
 
       inp = (char *)&ucs;
@@ -1581,9 +1576,6 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
     unsigned char buf;
     for (i = 0; i < l; i++) {
       ucs = [s characterAtIndex:i];
-      if (ucs == '\n') {
-        ucs = '\r';
-      }
       if (ucs < 256) {
         buf = ucs;
         [ts ts_sendCString:(const char *)&buf length:1];
