@@ -84,6 +84,7 @@ complete. (TODO check this) */
 - (void)setTerminalScreenWidth:(int)w height:(int)h cursorY:(int)cursor_y;
 - (void)handleKeyEvent:(NSEvent *)e;
 - (void)sendString:(NSString *)str;
+- (void)pasteString:(NSString *)str;
 
 - (void)setCharset:(NSString *)charsetName;
 - (void)setDoubleEscape:(BOOL)doubleEscape;

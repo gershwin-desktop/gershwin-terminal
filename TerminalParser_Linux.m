@@ -1544,6 +1544,15 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
   }
 }
 
+- (void)pasteString:(NSString *)s
+{
+  if (bracketed_paste)
+    [ts ts_sendCString:"\033[200~"];
+  [self sendString:s];
+  if (bracketed_paste)
+    [ts ts_sendCString:"\033[201~"];
+}
+
 - (void)sendString:(NSString *)s
 {
   int l = [s length];

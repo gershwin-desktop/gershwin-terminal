@@ -1776,7 +1776,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
   str = [pb stringForType:NSStringPboardType];
   if (str)
-    [terminalParser sendString:str];
+    [terminalParser pasteString:str];
 }
 
 // Menu item "Edit > Paste Selection"
@@ -1788,7 +1788,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     return;
   }
   if (s)
-    [terminalParser sendString:s];
+    [terminalParser pasteString:s];
 }
 
 // Menu item "Font > Copy Font"
@@ -2105,7 +2105,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
   str = [pb stringForType:NSStringPboardType];
   if (str) {
-    [terminalParser sendString:str];
+    [terminalParser pasteString:str];
   }
 }
 
@@ -2556,7 +2556,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
   if ([types containsObject:NSStringPboardType]) {
     NSString *str = [pb stringForType:NSStringPboardType];
-    [terminalParser sendString:str];
+    [terminalParser pasteString:str];
     return YES;
   }
 
