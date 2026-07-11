@@ -356,6 +356,17 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
 - (BOOL)windowShouldClose:(id)sender
 {
+  if ([tView isUserProgramRunning]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"A process is running in this terminal."];
+    [alert setInformativeText:@"Closing this window will terminate it. Are you sure?"];
+    [alert addButtonWithTitle:@"Close"];
+    [alert addButtonWithTitle:@"Cancel"];
+    [alert setAlertStyle:NSWarningAlertStyle];
+    NSInteger result = [alert runModal];
+    [alert release];
+    return (result == NSAlertFirstButtonReturn);
+  }
   return YES;
 }
 
