@@ -3504,16 +3504,18 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
       row < -curr_sb_depth || row >= screen_height)
     return nil;
 
-  // Build a combined character buffer for ~7 rows around (col,row) so we
-  // can detect multi-line URLs without scanning the whole screen.
-  int startRow = MAX(row - 3, -curr_sb_depth);
-  int endRow   = MIN(row + 3, screen_height - 1);
-  int numRows  = endRow - startRow + 1;
+  // Build a combined character buffer of all visible rows so we can
+  // detect multi-line URLs regardless of how many rows they span.
+  int firstVis = -curr_sb_position;
+  int lastVis  = firstVis + screen_height - 1;
+  firstVis = MAX(firstVis, -curr_sb_depth);
+  lastVis  = MIN(lastVis, screen_height - 1);
+  int numRows  = lastVis - firstVis + 1;
   int totalChars = numRows * screen_width;
 
   unichar buf[totalChars];
   int offset = 0;
-  for (int r = startRow; r <= endRow; r++)
+  for (int r = firstVis; r <= lastVis; r++)
     {
       screen_char_t *ch;
       if (r >= 0) ch = &SCREEN(0, r);
@@ -3522,7 +3524,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
         buf[offset++] = (ch[c].ch == 0) ? ' ' : ch[c].ch;
     }
 
-  int absPos = (row - startRow) * screen_width + col;
+  int absPos = (row - firstVis) * screen_width + col;
   NSString *combined = [[NSString alloc] initWithCharacters:buf length:totalChars];
   NSString *foundURL = nil;
 
