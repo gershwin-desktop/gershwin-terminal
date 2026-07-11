@@ -120,10 +120,7 @@ struct selection_range {
   // ------
   NSColor *cursorColor;
   NSUInteger cursorStyle;
-  NSUInteger cursorBlinkingState;
-  NSTimeInterval cursorBlinkingInterval;
-  NSRect lastCursorRect;
-  int focus_mode;
+  BOOL cursor_blink_visible;
   // Window:Background
   CGFloat WIN_BG_H;
   CGFloat WIN_BG_S;

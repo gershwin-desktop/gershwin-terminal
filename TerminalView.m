@@ -90,6 +90,12 @@
 }
 @end
 
+@interface TerminalView (blink_private)
+- (BOOL)_cursorShouldBlink;
+- (void)_blinkCursorTick;
+- (void)_showCursorForActivity;
+@end
+
 /* TODO */
 @interface NSView (unlockfocus)
 - (void)unlockFocusNeedsFlush:(BOOL)flush;
@@ -437,13 +443,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   INV_FG_H = [invFG hueComponent];
   INV_FG_S = [invFG saturationComponent];
   INV_FG_B = [invFG brightnessComponent];
-
-  if ([prefs isCursorBlinking]) {
-    cursorBlinkingInterval = 0.5;
-  } else {
-    cursorBlinkingInterval = 0;
-  }
-  cursorBlinkingState = 0;
 }
 
 #pragma mark - Rendering
@@ -956,39 +955,27 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
 
   //------------------- CURSOR ----------------------------------------------------
-  {
-    float x = cursor_x * fx + border_x;
-    float y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
-
-    lastCursorRect.origin.x = x;
-    lastCursorRect.origin.y = y;
-    lastCursorRect.size.width = fx;
-    lastCursorRect.size.height = fy;
-  }
-
-  if (focus_mode && cursorBlinkingState) {
-    shouldDrawCursor = NO;
-  }
-
   if (shouldDrawCursor && cursorVisible) {
-    [cursorColor set];
+    if (cursor_blink_visible) {
+      [cursorColor set];
 
-    float x = cursor_x * fx + border_x;
-    float y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
+      float x = cursor_x * fx + border_x;
+      float y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
 
-    switch (cursorStyle) {
-      case CURSOR_BLOCK_INVERT:  // 0
-        DPScompositerect(cur, x, y, fx, fy, NSCompositeSourceIn);
-        break;
-      case CURSOR_BLOCK_STROKE:  // 1
-        DPSrectstroke(cur, x + 0.5, y + 0.5, fx - 1.0, fy - 1.0);
-        break;
-      case CURSOR_BLOCK_FILL:  // 2
-        DPSrectfill(cur, x, y, fx, fy);
-        break;
-      case CURSOR_LINE:  // 3
-        DPSrectfill(cur, x, y, fx, fy * 0.1);
-        break;
+      switch (cursorStyle) {
+        case CURSOR_BLOCK_INVERT:  // 0
+          DPScompositerect(cur, x, y, fx, fy, NSCompositeSourceIn);
+          break;
+        case CURSOR_BLOCK_STROKE:  // 1
+          DPSrectstroke(cur, x + 0.5, y + 0.5, fx - 1.0, fy - 1.0);
+          break;
+        case CURSOR_BLOCK_FILL:  // 2
+          DPSrectfill(cur, x, y, fx, fy);
+          break;
+        case CURSOR_LINE:  // 3
+          DPSrectfill(cur, x, y, fx, fy * 0.1);
+          break;
+      }
     }
     shouldDrawCursor = NO;
   }
@@ -1483,22 +1470,21 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
 }
 
+- (void)viewWillMoveToWindow:(NSWindow *)newWindow
+{
+  if (!newWindow) {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                            selector:@selector(_blinkCursorTick)
+                                              object:nil];
+    cursor_blink_visible = YES;
+  }
+}
+
 - (void)viewDidMoveToWindow
 {
   [super viewDidMoveToWindow];
   [[self window] setAcceptsMouseMovedEvents:YES];
-  if ([self window]) {
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(windowResignedKey:)
-                                                 name:NSWindowDidResignKeyNotification
-                                               object:[self window]];
-  }
-}
-
-- (void)windowResignedKey:(NSNotification *)not
-{
-  focus_mode = 0;
-  [self setNeedsDisplay:YES];
+  [self blinkCursor];
 }
 
 - (void)mouseMoved:(NSEvent *)event
@@ -1523,6 +1509,8 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (void)keyDown:(NSEvent *)e
 {
+  [self _showCursorForActivity];
+
   NSString *s = [e charactersIgnoringModifiers];
 
   [NSCursor setHiddenUntilMouseMoves:YES];
@@ -1572,7 +1560,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (BOOL)becomeFirstResponder
 {
-  focus_mode = 1;
   [self blinkCursor];
   [self setNeedsDisplay:YES];
   return YES;
@@ -1580,7 +1567,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (BOOL)resignFirstResponder
 {
-  focus_mode = 0;
   [self blinkCursor];
   [self setNeedsDisplay:YES];
   return YES;
@@ -2248,7 +2234,8 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
       break;
   }
 
-  cursorBlinkingState = 0;
+  if (total > 0)
+    [self _showCursorForActivity];
 
   if (cursor_x != current_x || cursor_y != current_y) {
     ADD_DIRTY(current_x, current_y, 1, 1);
@@ -2614,24 +2601,60 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
 @implementation TerminalView
 
+- (NSRect)_cursorCellRect
+{
+  NSRect r;
+  r.origin.x = cursor_x * fx + border_x;
+  r.origin.y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
+  r.size.width = fx;
+  r.size.height = fy;
+  return r;
+}
+
+- (BOOL)_cursorShouldBlink
+{
+  NSWindow *w = [self window];
+  return [defaults isCursorBlinking] && w && [w isKeyWindow]
+         && [w firstResponder] == self && [NSApp isActive];
+}
+
 - (void)blinkCursor
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self
-                                          selector:@selector(blinkCursor)
+                                          selector:@selector(_blinkCursorTick)
                                             object:nil];
-  if (!focus_mode) {
-    cursorBlinkingState = 0;
+  cursor_blink_visible = YES;
+  if ([self _cursorShouldBlink]) {
+    [self performSelector:@selector(_blinkCursorTick)
+               withObject:nil
+               afterDelay:0.5];
   }
-  else if (cursorBlinkingInterval > 0) {
-    cursorBlinkingState = !cursorBlinkingState;
-    [self setNeedsDisplayInRect:lastCursorRect];
-    [self performSelector:@selector(blinkCursor)
-              withObject:nil
-              afterDelay:cursorBlinkingInterval];
+  [self setNeedsDisplay:YES];
+}
+
+- (void)_blinkCursorTick
+{
+  cursor_blink_visible = !cursor_blink_visible;
+  if (screen && screen_width > 0 && screen_height > 0) {
+    SCREEN(cursor_x, cursor_y).attr |= 0x80;
+    shouldDrawCursor = YES;
+    [self setNeedsLazyDisplayInRect:[self _cursorCellRect]];
   }
-  else {
-    cursorBlinkingState = 0;
-    [self setNeedsDisplay:YES];
+  [self performSelector:@selector(_blinkCursorTick)
+             withObject:nil
+             afterDelay:0.5];
+}
+
+- (void)_showCursorForActivity
+{
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                          selector:@selector(_blinkCursorTick)
+                                            object:nil];
+  cursor_blink_visible = YES;
+  if ([self _cursorShouldBlink]) {
+    [self performSelector:@selector(_blinkCursorTick)
+               withObject:nil
+               afterDelay:0.5];
   }
 }
 
@@ -2814,7 +2837,24 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   [self updateColors:nil];
   [self setCursorStyle:[defaults cursorStyle]];
 
-  [self blinkCursor];
+  cursor_blink_visible = YES;
+
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(blinkCursor)
+                                               name:NSWindowDidBecomeKeyNotification
+                                             object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(blinkCursor)
+                                               name:NSWindowDidResignKeyNotification
+                                             object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(blinkCursor)
+                                               name:NSApplicationDidBecomeActiveNotification
+                                             object:nil];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(blinkCursor)
+                                               name:NSApplicationDidResignActiveNotification
+                                             object:nil];
 
   isActivityMonitorEnabled = [defaults isActivityMonitorEnabled];
 
@@ -2840,11 +2880,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 - (void)dealloc
 {
   [NSObject cancelPreviousPerformRequestsWithTarget:self
-                                          selector:@selector(blinkCursor)
+                                          selector:@selector(_blinkCursorTick)
                                             object:nil];
-
-  focus_mode = 0;
-  cursorBlinkingInterval = 0;
 
   [[NSNotificationCenter defaultCenter] removeObserver:self];
 
