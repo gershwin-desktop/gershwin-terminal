@@ -1817,7 +1817,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       break;
 
     case 3:
-      ch2 = 0x0d;
+      ch2 = 0x03;
       break;
 
     case '\r':
