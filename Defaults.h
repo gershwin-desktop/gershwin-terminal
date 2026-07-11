@@ -153,6 +153,7 @@ extern NSString *WordCharactersKey;
 extern NSString *BlackOnWhiteKey;
 extern NSString *CursorStyleKey;
 extern NSString *CursorColorKey;
+extern NSString *CursorBlinkingKey;
 
 extern NSString *WindowBGColorKey;
 extern NSString *SelectionBGColorKey;

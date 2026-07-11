@@ -437,6 +437,13 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   INV_FG_H = [invFG hueComponent];
   INV_FG_S = [invFG saturationComponent];
   INV_FG_B = [invFG brightnessComponent];
+
+  if ([prefs isCursorBlinking]) {
+    cursorBlinkingInterval = 0.5;
+  } else {
+    cursorBlinkingInterval = 0;
+  }
+  cursorBlinkingState = 0;
 }
 
 #pragma mark - Rendering
@@ -949,12 +956,25 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   }
 
   //------------------- CURSOR ----------------------------------------------------
+  {
+    float x = cursor_x * fx + border_x;
+    float y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
+
+    lastCursorRect.origin.x = x;
+    lastCursorRect.origin.y = y;
+    lastCursorRect.size.width = fx;
+    lastCursorRect.size.height = fy;
+  }
+
+  if (focus_mode && cursorBlinkingState) {
+    shouldDrawCursor = NO;
+  }
+
   if (shouldDrawCursor && cursorVisible) {
-    float x, y;
     [cursorColor set];
 
-    x = cursor_x * fx + border_x;
-    y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
+    float x = cursor_x * fx + border_x;
+    float y = (screen_height - 1 - cursor_y + curr_sb_position) * fy + border_y;
 
     switch (cursorStyle) {
       case CURSOR_BLOCK_INVERT:  // 0
@@ -1467,6 +1487,18 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 {
   [super viewDidMoveToWindow];
   [[self window] setAcceptsMouseMovedEvents:YES];
+  if ([self window]) {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(windowResignedKey:)
+                                                 name:NSWindowDidResignKeyNotification
+                                               object:[self window]];
+  }
+}
+
+- (void)windowResignedKey:(NSNotification *)not
+{
+  focus_mode = 0;
+  [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent *)event
@@ -1540,11 +1572,17 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (BOOL)becomeFirstResponder
 {
+  focus_mode = 1;
+  [self blinkCursor];
+  [self setNeedsDisplay:YES];
   return YES;
 }
 
 - (BOOL)resignFirstResponder
 {
+  focus_mode = 0;
+  [self blinkCursor];
+  [self setNeedsDisplay:YES];
   return YES;
 }
 
@@ -2210,6 +2248,8 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
       break;
   }
 
+  cursorBlinkingState = 0;
+
   if (cursor_x != current_x || cursor_y != current_y) {
     ADD_DIRTY(current_x, current_y, 1, 1);
     SCREEN(current_x, current_y).attr |= 0x80;
@@ -2574,6 +2614,27 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
 @implementation TerminalView
 
+- (void)blinkCursor
+{
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                          selector:@selector(blinkCursor)
+                                            object:nil];
+  if (!focus_mode) {
+    cursorBlinkingState = 0;
+  }
+  else if (cursorBlinkingInterval > 0) {
+    cursorBlinkingState = !cursorBlinkingState;
+    [self setNeedsDisplayInRect:lastCursorRect];
+    [self performSelector:@selector(blinkCursor)
+              withObject:nil
+              afterDelay:cursorBlinkingInterval];
+  }
+  else {
+    cursorBlinkingState = 0;
+    [self setNeedsDisplay:YES];
+  }
+}
+
 #pragma mark - Init and dealloc
 // ---
 // Init and dealloc
@@ -2753,6 +2814,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   [self updateColors:nil];
   [self setCursorStyle:[defaults cursorStyle]];
 
+  [self blinkCursor];
+
   isActivityMonitorEnabled = [defaults isActivityMonitorEnabled];
 
   return self;
@@ -2776,6 +2839,13 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
 - (void)dealloc
 {
+  [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                          selector:@selector(blinkCursor)
+                                            object:nil];
+
+  focus_mode = 0;
+  cursorBlinkingInterval = 0;
+
   [[NSNotificationCenter defaultCenter] removeObserver:self];
 
   [self closeProgram];

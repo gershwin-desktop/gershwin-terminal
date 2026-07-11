@@ -548,11 +548,13 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   if ([prefs objectForKey:CursorColorKey]) {
     [tView setCursorStyle:[prefs cursorStyle]];
     [tView updateColors:prefs];  // TODO
+    [tView blinkCursor];
     [tView setNeedsDisplayInRect:[tView frame]];
 
     // Update live preferences
     [livePreferences setCursorColor:[prefs cursorColor]];
     [livePreferences setCursorStyle:[prefs cursorStyle]];
+    [livePreferences setCursorBlinking:[prefs isCursorBlinking]];
     [livePreferences setWindowBackgroundColor:[prefs windowBackgroundColor]];
     [livePreferences setWindowSelectionColor:[prefs windowSelectionColor]];
     [livePreferences setTextNormalColor:[prefs textNormalColor]];

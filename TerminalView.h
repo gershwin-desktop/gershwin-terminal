@@ -120,6 +120,10 @@ struct selection_range {
   // ------
   NSColor *cursorColor;
   NSUInteger cursorStyle;
+  NSUInteger cursorBlinkingState;
+  NSTimeInterval cursorBlinkingInterval;
+  NSRect lastCursorRect;
+  int focus_mode;
   // Window:Background
   CGFloat WIN_BG_H;
   CGFloat WIN_BG_S;
@@ -176,6 +180,7 @@ struct selection_range {
 - (BOOL)setScrollBufferMaxLength:(int)lines;
 - (void)setScrollBottomOnInput:(BOOL)scrollBottom;
 - (void)setCursorStyle:(NSUInteger)style;
+- (void)blinkCursor;
 
 - (void)setCharset:(NSString *)charsetName;
 - (void)setUseMulticellGlyphs:(BOOL)multicellGlyphs;

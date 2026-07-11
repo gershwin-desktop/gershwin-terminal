@@ -72,6 +72,7 @@
   // Cursor
   [cursorColorBtn setColor:[defs cursorColor]];
   [cursorStyleMatrix selectCellWithTag:[defs cursorStyle]];
+  [cursorBlinkingBtn setState:[defs isCursorBlinking]];
 }
 
 // Injects color settings into default preferences (Terminal.plist
@@ -85,6 +86,7 @@
   // Cursor
   [defs setCursorColor:[cursorColorBtn color]];
   [defs setCursorStyle:[[cursorStyleMatrix selectedCell] tag]];
+  [defs setCursorBlinking:[cursorBlinkingBtn state]];
 
   // Window
   [defs setWindowBackgroundColor:[windowBGColorBtn color]];
@@ -126,6 +128,7 @@
   // Cursor
   [prefs setCursorColor:[cursorColorBtn color]];
   [prefs setCursorStyle:[[cursorStyleMatrix selectedCell] tag]];
+  [prefs setCursorBlinking:[cursorBlinkingBtn state]];
 
   // Window
   [prefs setWindowBackgroundColor:[windowBGColorBtn color]];

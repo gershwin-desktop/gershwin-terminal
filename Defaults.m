@@ -497,6 +497,7 @@ NSString *DoubleEscapeKey = @"DoubleEscape";
 //---
 NSString *CursorStyleKey = @"CursorStyle";
 NSString *CursorColorKey = @"CursorColor";
+NSString *CursorBlinkingKey = @"CursorBlinking";
 
 NSString *WindowBGColorKey = @"WindowBackgroundColor";
 NSString *SelectionBGColorKey = @"WindowSelectionColor";
@@ -603,14 +604,18 @@ NSString *TerminalFontUseBoldKey = @"TerminalFontUseBold";
 {
   [self setObject:[Defaults descriptionFromColor:color] forKey:SelectionBGColorKey];
 }
-// TODO:
 - (BOOL)isCursorBlinking
 {
-  return NO;
+  id obj = [self objectForKey:CursorBlinkingKey];
+  if (obj != nil &&
+      ([obj isKindOfClass:[NSString class]] || [obj isKindOfClass:[NSNumber class]])) {
+    return [obj boolValue];
+  }
+  return YES;
 }
 - (void)setCursorBlinking:(BOOL)yn
 {
-  // TODO
+  [self setBool:yn forKey:CursorBlinkingKey];
 }
 - (NSColor *)textNormalColor
 {
