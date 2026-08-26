@@ -153,6 +153,14 @@ struct selection_range {
   CGFloat INV_FG_H;
   CGFloat INV_FG_S;
   CGFloat INV_FG_B;
+
+  // Per-instance state for the _GERSHWIN_CONTENT_ACTIVITY titlebar signal.
+  // Must be per-instance: a static would let only the first terminal window
+  // ever signal, and would let one busy terminal suppress all others.
+  void *actDpy;
+  unsigned long actWin;
+  unsigned long actAtom;
+  NSTimeInterval actLast;
 }
 
 - initWithPreferences:(id)preferences;

@@ -1058,11 +1058,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 // off this; anything finer is wasted X traffic.
 - (void)_gershwinSignalContentActivity
 {
-  static Display *actDpy = NULL;
-  static Window actWin = 0;
-  static Atom actAtom = None;
-  static NSTimeInterval actLast = 0;
-
   NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
   if (actLast > 0 && (now - actLast) < 0.25)
     return;
