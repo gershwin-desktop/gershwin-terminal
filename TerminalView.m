@@ -62,6 +62,9 @@
 #import <AppKit/AppKit.h>
 #import <GNUstepBase/Unicode.h>
 #import <Foundation/NSTask.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#import <GNUstepGUI/GSDisplayServer.h>
 
 #import "TerminalWindow.h"
 #import "TerminalView.h"
@@ -1043,6 +1046,46 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     *s++ = ch;
   }
   ADD_DIRTY(x, y, c, 1);
+}
+
+// Signal the window manager that this terminal's content changed.  The WM
+// uses this to drive the titlebar "busy" spinner.  We cannot rely on the
+// X Damage extension here: while the window is WindowShaded the client is
+// clipped by the (shrunk) frame, so the X server emits no Damage for it, and
+// gershwin-terminal also opts out of compositing (_NET_WM_BYPASS_COMPOSITOR)
+// for performance.  A lightweight property write bypasses both problems and
+// fires regardless of visibility.  Throttled to 250ms - the spinner is driven
+// off this; anything finer is wasted X traffic.
+- (void)_gershwinSignalContentActivity
+{
+  static Display *actDpy = NULL;
+  static Window actWin = 0;
+  static Atom actAtom = None;
+  static NSTimeInterval actLast = 0;
+
+  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+  if (actLast > 0 && (now - actLast) < 0.25)
+    return;
+  actLast = now;
+
+  if (actDpy == NULL) {
+    GSDisplayServer *server = GSCurrentServer();
+    actDpy = (Display *)[server serverDevice];
+    if (actDpy)
+      actAtom = XInternAtom(actDpy, "_GERSHWIN_CONTENT_ACTIVITY", False);
+  }
+  if (actWin == 0) {
+    NSWindow *win = [self window];
+    if (win) {
+      GSDisplayServer *server = GSCurrentServer();
+      actWin = (Window)(intptr_t)[server windowDevice:[win windowNumber]];
+    }
+  }
+  if (actDpy && actWin && actAtom != None) {
+    unsigned long v = 1;
+    XChangeProperty(actDpy, actWin, actAtom, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&v, 1);
+  }
 }
 
 - (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter
@@ -2270,6 +2313,14 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
     [self _updateScroller];
   }
+
+  // Tell the window manager this terminal produced output, so it can drive the
+  // titlebar content-activity spinner.  Done here (the single pty-read
+  // choke-point) rather than inside ts_putChar so scrolling/erase output -
+  // which uses the offset-based ts_putChar variant - is covered too.  The WM
+  // needs this especially while the window is WindowShaded, where the client is
+  // clipped and emits no X Damage.
+  [self _gershwinSignalContentActivity];
 }
 
 - (void)writeData
