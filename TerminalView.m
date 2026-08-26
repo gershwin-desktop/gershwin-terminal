@@ -995,6 +995,13 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (void)setNeedsDisplayInRect:(NSRect)r
 {
+  /* Single unified content-activity signal: every visible change in the
+     terminal (PTY output, scrollback scroll, selection, cursor blink, resize)
+     funnels through a display request, so reporting here covers them all -
+     including while the window is WindowShaded, where drawRect is never called
+     but the model still requests a redraw. */
+  [self _gershwinSignalContentActivity];
+
   /* Do not force full-screen redraw here. Callers that genuinely need a full
      repaint call -setNeedsDisplay:YES (which goes through the full-redraw
      path). Leaving draw_all alone lets lazy dirty-cell drawing stay efficient
@@ -1007,7 +1014,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   if (draw_all == 1) {
     draw_all = 0;
   }
-  [super setNeedsDisplayInRect:r];
+  /* Route through self so the content-activity signal in setNeedsDisplayInRect:
+     is the one and only path that reports terminal activity. */
+  [self setNeedsDisplayInRect:r];
 }
 
 
@@ -2308,14 +2317,6 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
     [self _updateScroller];
   }
-
-  // Tell the window manager this terminal produced output, so it can drive the
-  // titlebar content-activity spinner.  Done here (the single pty-read
-  // choke-point) rather than inside ts_putChar so scrolling/erase output -
-  // which uses the offset-based ts_putChar variant - is covered too.  The WM
-  // needs this especially while the window is WindowShaded, where the client is
-  // clipped and emits no X Damage.
-  [self _gershwinSignalContentActivity];
 }
 
 - (void)writeData
