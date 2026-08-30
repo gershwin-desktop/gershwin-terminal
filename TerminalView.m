@@ -2994,6 +2994,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
      window. */
   if (nsx == screen_width && nsy == screen_height) {
     draw_all = 2;
+    [self setNeedsDisplay:YES];
     return;
   }
 
