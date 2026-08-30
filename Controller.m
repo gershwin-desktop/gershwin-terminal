@@ -375,9 +375,108 @@
   return YES;
 }
 
+// Assign Command-+ / Command-- key equivalents to the "Larger" and
+// "Smaller" Font menu items.  Doing this in code keeps the gorm untouched
+// and works regardless of keyboard layout.
+- (void)assignFontMenuKeyEquivalents
+{
+  NSMenu *mainMenu = [NSApp mainMenu];
+  NSMenu *fontMenu = [[mainMenu itemWithTitle:@"Font"] submenu];
+  id<NSMenuItem> item;
+
+  if (fontMenu == nil)
+    return;
+
+  item = [fontMenu itemWithTitle:@"Larger"];
+  if (item != nil) {
+    [item setKeyEquivalent:@"+"];
+    [item setKeyEquivalentModifierMask:NSCommandKeyMask];
+  }
+  item = [fontMenu itemWithTitle:@"Smaller"];
+  if (item != nil) {
+    [item setKeyEquivalent:@"-"];
+    [item setKeyEquivalentModifierMask:NSCommandKeyMask];
+  }
+}
+
+// Insert menu separators at standard positions.
+// Gorm does not define separators, so we add them programmatically.
+- (void)setupMenuSeparators
+{
+  NSMenu *mainMenu = [NSApp mainMenu];
+  if (mainMenu == nil)
+    return;
+
+  // Shell menu (effectively the File menu)
+  NSMenu *shellMenu = [[mainMenu itemWithTitle:@"Shell"] submenu];
+  if (shellMenu != nil) {
+    // Separator after "Run Command..."
+    id<NSMenuItem> runCmd = [shellMenu itemWithTitle:@"Run Command..."];
+    if (runCmd != nil) {
+      NSInteger idx = [shellMenu indexOfItem:runCmd];
+      if (idx >= 0 && idx + 1 < [shellMenu numberOfItems]) {
+        [shellMenu insertItem:[NSMenuItem separatorItem] atIndex:idx + 1];
+      }
+    }
+    // Separator after "Save As..."
+    id<NSMenuItem> saveAs = [shellMenu itemWithTitle:@"Save As..."];
+    if (saveAs != nil) {
+      NSInteger idx = [shellMenu indexOfItem:saveAs];
+      if (idx >= 0 && idx + 1 < [shellMenu numberOfItems]) {
+        // Account for separator we may have just inserted
+        id<NSMenuItem> existing = [shellMenu itemAtIndex:idx + 1];
+        if (![existing isSeparatorItem]) {
+          [shellMenu insertItem:[NSMenuItem separatorItem] atIndex:idx + 1];
+        }
+      }
+    }
+    // Separator after "Set Title..."
+    id<NSMenuItem> setTitle = [shellMenu itemWithTitle:@"Set Title..."];
+    if (setTitle != nil) {
+      NSInteger idx = [shellMenu indexOfItem:setTitle];
+      if (idx >= 0 && idx + 1 < [shellMenu numberOfItems]) {
+        id<NSMenuItem> existing = [shellMenu itemAtIndex:idx + 1];
+        if (![existing isSeparatorItem]) {
+          [shellMenu insertItem:[NSMenuItem separatorItem] atIndex:idx + 1];
+        }
+      }
+    }
+  }
+
+  // Edit menu
+  NSMenu *editMenu = [[mainMenu itemWithTitle:@"Edit"] submenu];
+  if (editMenu != nil) {
+    // Separator before "Select All" (after Paste Selection)
+    id<NSMenuItem> selectAll = [editMenu itemWithTitle:@"Select All"];
+    if (selectAll != nil) {
+      NSInteger idx = [editMenu indexOfItem:selectAll];
+      if (idx > 0) {
+        id<NSMenuItem> existing = [editMenu itemAtIndex:idx - 1];
+        if (existing && ![existing isSeparatorItem]) {
+          [editMenu insertItem:[NSMenuItem separatorItem] atIndex:idx];
+        }
+      }
+    }
+    // Separator before "Clear Buffer"
+    id<NSMenuItem> clearBuffer = [editMenu itemWithTitle:@"Clear Buffer"];
+    if (clearBuffer != nil) {
+      NSInteger idx = [editMenu indexOfItem:clearBuffer];
+      if (idx > 0) {
+        id<NSMenuItem> existing = [editMenu itemAtIndex:idx - 1];
+        if (existing && ![existing isSeparatorItem]) {
+          [editMenu insertItem:[NSMenuItem separatorItem] atIndex:idx];
+        }
+      }
+    }
+  }
+}
+
 // --- NSApplication delegate
 - (void)applicationWillFinishLaunching:(NSNotification *)n
 {
+  [self assignFontMenuKeyEquivalents];
+  [self setupMenuSeparators];
+
   idleList = [[NSMutableArray alloc] init];
 
   [TerminalView registerPasteboardTypes];
