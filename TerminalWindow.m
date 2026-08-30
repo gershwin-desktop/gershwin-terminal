@@ -99,6 +99,7 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   [win setMinSize:winMinimumSize];
 
   hBox = [[GSHbox alloc] init];
+  [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
   // Scroller (Create First but Do NOT Add to hBox Yet)
   scroller = [[NSScroller alloc] initWithFrame:NSMakeRect(0, 0, scrollerWidth, charCellSize.height)];
@@ -466,6 +467,7 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
         [tView removeFromSuperview];
         [hBox release];
         hBox = [[GSHbox alloc] init];
+        [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
         [hBox addView:scroller enablingXResizing:NO];
         [scroller release];
@@ -478,6 +480,7 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
         [scroller removeFromSuperview];
         [hBox release];
         hBox = [[GSHbox alloc] init];
+        [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
         [hBox addView:tView];
         [tView release];
