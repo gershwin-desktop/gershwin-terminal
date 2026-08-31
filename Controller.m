@@ -869,9 +869,8 @@
     wOrigin.x += [NSScroller scrollerWidth] + 3;
     wOrigin.y -= 24;
     [[controller window] setFrameOrigin:wOrigin];
-  } else {
-    [[controller window] center];
   }
+  // First window: no positioning - let the WM cascade it.
 }
 
 - (TerminalWindowController *)newWindow
