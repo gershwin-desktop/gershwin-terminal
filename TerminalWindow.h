@@ -15,7 +15,7 @@
 
 #include <AppKit/NSWindowController.h>
 #include <AppKit/NSScroller.h>
-#include <GNUstepGUI/GSHbox.h>
+#include <AppKit/NSView.h>
 
 #import "Defaults.h"
 #import "TerminalIcon.h"
@@ -26,7 +26,7 @@ extern NSString *TerminalWindowSizeDidChangeNotification;
 @interface TerminalWindowController : NSWindowController
 {
   NSWindow *win;
-  GSHbox *hBox;
+  NSView *containerView;
   NSScroller *scroller;
   TerminalView *tView;
 

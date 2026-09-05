@@ -2971,8 +2971,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   int iy, ny;
   int copy_sx;
 
-  nsx = (size.width - border_x) / fx;
-  nsy = (size.height - border_y) / fy;
+  nsx = (int)floor((size.width - border_x + 0.001) / fx);
+  nsy = (int)floor((size.height - border_y + 0.001) / fy);
 
   NSDebugLLog(@"term", @"_resizeTerminalTo: (%g %g) %i %i (%g %g)\n", size.width, size.height, nsx,
               nsy, nsx * fx, nsy * fy);
@@ -3013,6 +3013,24 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   }
   memset(nscreen, 0, sizeof(screen_char_t) * nsx * nsy);
   memset(new_sb_buffer, 0, sizeof(screen_char_t) * nsx * alloc_sb_depth);
+
+  if (alt_screen_buffer) {
+    screen_char_t *new_alt_buffer = malloc(nsx * nsy * sizeof(screen_char_t));
+    if (new_alt_buffer) {
+      memset(new_alt_buffer, 0, nsx * nsy * sizeof(screen_char_t));
+      int copy_w = alt_screen_alloc_w < nsx ? alt_screen_alloc_w : nsx;
+      int copy_h = alt_screen_alloc_h < nsy ? alt_screen_alloc_h : nsy;
+      for (int row = 0; row < copy_h; row++) {
+        memcpy(&new_alt_buffer[row * nsx],
+               &alt_screen_buffer[row * alt_screen_alloc_w],
+               copy_w * sizeof(screen_char_t));
+      }
+      free(alt_screen_buffer);
+      alt_screen_buffer = new_alt_buffer;
+      alt_screen_alloc_w = nsx;
+      alt_screen_alloc_h = nsy;
+    }
+  }
 
   copy_sx = screen_width;
   if (copy_sx > nsx) {
@@ -3099,6 +3117,12 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   if (curr_sb_depth < 0) {
     curr_sb_depth = 0;
   }
+  // The depth update above can shrink the scrollback below the current
+  // scroll position; drawing would then read rows outside the valid
+  // scrollback window and show blank/garbage lines.
+  if (curr_sb_position < -curr_sb_depth) {
+    curr_sb_position = -curr_sb_depth;
+  }
   // fprintf(stderr,
   //         "***< curr_sb_depth=%i, alloc_sb_depth=%i, sy=%i, nsy=%i cursor_y=%i\n",
   //         curr_sb_depth, alloc_sb_depth, sy, nsy, cursor_y);
@@ -3110,15 +3134,24 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   screen = nscreen;
   scrollback = new_sb_buffer;
 
-  if (cursor_x > screen_width) {
+  if (cursor_x >= screen_width) {
     cursor_x = screen_width - 1;
   }
-  if (cursor_y > screen_height) {
+  if (cursor_x < 0) {
+    cursor_x = 0;
+  }
+  if (cursor_y >= screen_height) {
     cursor_y = screen_height - 1;
   }
-  // fprintf(stderr,
-  //         "***< curr_sb_depth=%i, alloc_sb_depth=%i, sy=%i, nsy=%i cursor_y=%i line_shift=%i\n",
-  //         curr_sb_depth, alloc_sb_depth, sy, nsy, cursor_y, line_shift);
+  if (cursor_y < 0) {
+    cursor_y = 0;
+  }
+  current_x = cursor_x;
+  current_y = cursor_y;
+
+  draw_all = 2;
+  pending_scroll = 0;
+  dirty.x0 = -1;
 
   [self _updateScroller];
 
@@ -3127,6 +3160,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   if (master_fd != -1) {
     ws.ws_row = nsy;
     ws.ws_col = nsx;
+    ws.ws_xpixel = (unsigned short)(nsx * fx);
+    ws.ws_ypixel = (unsigned short)(nsy * fy);
     ioctl(master_fd, TIOCSWINSZ, &ws);
   }
 

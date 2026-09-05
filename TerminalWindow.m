@@ -31,6 +31,10 @@ NSString *TerminalWindowNoMoreActiveWindowsNotification =
     @"TerminalWindowNoMoreActiveWindowsNotification";
 NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChangeNotification";
 
+@interface TerminalWindowController ()
+- (void)layoutTerminalContent;
+@end
+
 @implementation TerminalWindowController
 
 #define CONTENT_H_BORDER 4
@@ -98,44 +102,69 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   [win setResizeIncrements:NSMakeSize(charCellSize.width, charCellSize.height)];
   [win setMinSize:winMinimumSize];
 
-  hBox = [[GSHbox alloc] init];
-  [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  // Plain container with explicit layout. GSHbox/GSTable is not used here
+  // anymore: it keeps row/column geometry as incremental state which can
+  // desync from the window during live resizes (notably top-edge drags,
+  // where origin and height change with every event) and leave the
+  // terminal view with a stale or collapsed frame.
+  containerView =
+      [[NSView alloc] initWithFrame:NSMakeRect(0, 0, winContentSize.width, winContentSize.height)];
+  [containerView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
-  // Scroller (Create First but Do NOT Add to hBox Yet)
+  // Scroller (Create First but Do NOT Add to containerView Yet)
   scroller = [[NSScroller alloc] initWithFrame:NSMakeRect(0, 0, scrollerWidth, charCellSize.height)];
   [scroller setArrowsPosition:NSScrollerArrowsMaxEnd];
   [scroller setEnabled:YES];
-  [scroller setAutoresizingMask:NSViewHeightSizable];
+  [scroller setAutoresizingMask:NSViewHeightSizable | NSViewMinXMargin];
 
   // View (Initialize After Scroller is Created)
   tView = [[TerminalView alloc] initWithPreferences:preferences];
   [tView setIgnoreResize:YES];
-  [tView setAutoresizingMask:NSViewHeightSizable | NSViewWidthSizable];
+  [tView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 
-  // Link Scroller to tView BEFORE Adding tView to hBox
+  // Link Scroller to tView BEFORE Adding tView to containerView
   [tView setScroller:scroller];
 
-  // Add tView FIRST to Ensure Proper Layout
-  [hBox addView:tView];
+  [containerView addSubview:tView];
   [tView release];
   [tView setIgnoreResize:NO];
   [win makeFirstResponder:tView];
 
   [tView setBorderX:4 Y:2];
 
-  // Now Add Scroller to hBox AFTER tView (Places it on the Right)
+  // Scroller Sits on the Right Edge
   if (scrollBackEnabled)
   {
-    [hBox addView:scroller enablingXResizing:NO];
+    [containerView addSubview:scroller];
     [scroller release];
   }
 
-  [win setContentView:hBox];
-  DESTROY(hBox);
+  // Apply exact frames (and the initial terminal grid size) before the
+  // container becomes the window's content view.
+  [self layoutTerminalContent];
+
+  [win setContentView:containerView];
+  DESTROY(containerView);
 
   [win release];
 
   return self;
+}
+
+// Single source of truth for the layout of the terminal view and scroller
+// inside the window's content view. Called on every window resize so the
+// frames are re-asserted from the actual content rect instead of relying
+// only on autoresizing chains that can desync during live resizes.
+- (void)layoutTerminalContent
+{
+  NSRect content = [[win contentView] frame];
+  CGFloat scrollerW = (scrollBackEnabled == YES) ? scrollerWidth : 0;
+
+  [tView setFrame:NSMakeRect(0, 0, content.size.width - scrollerW, content.size.height)];
+
+  if (scrollerW > 0) {
+    [scroller setFrame:NSMakeRect(content.size.width - scrollerW, 0, scrollerW, content.size.height)];
+  }
 }
 
 - (void)showWindow:(id)sender
@@ -344,6 +373,16 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   }
 }
 
+// NSWindow delegate method. Posted for every window size change, including
+// live drags of any edge. Re-asserting the layout here makes the terminal
+// recover even when autoresizing leaves stale frames mid-drag (this is what
+// used to show up as an empty window when resizing from the top edge).
+- (void)windowDidResize:(NSNotification *)aNotification
+{
+  [self layoutTerminalContent];
+  [tView setNeedsDisplay:YES];
+}
+
 - (void)windowWillClose:(NSNotification *)aNotification
 {
   // NSLog(@"Window WILL close.");
@@ -463,29 +502,19 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
     if (boolValue != scrollBackEnabled) {
       scrollBackEnabled = boolValue;
       if (scrollBackEnabled == YES) {
-        [tView retain];
-        [tView removeFromSuperview];
-        [hBox release];
-        hBox = [[GSHbox alloc] init];
-        [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-
-        [hBox addView:scroller enablingXResizing:NO];
+        // While detached the controller owns the scroller (see below).
+        [[win contentView] addSubview:scroller];
         [scroller release];
-        [hBox addView:tView];
-        [tView release];
+        // calculateSizes() set this to 0 if scrollback was disabled at
+        // startup; it must be correct before layoutTerminalContent runs.
+        scrollerWidth = [NSScroller scrollerWidth];
       } else {
-        [tView retain];
-        [tView removeFromSuperview];
+        // Detached views are released by removeFromSuperview, so keep
+        // the scroller alive for toggling it back on later.
         [scroller retain];
         [scroller removeFromSuperview];
-        [hBox release];
-        hBox = [[GSHbox alloc] init];
-        [hBox setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-
-        [hBox addView:tView];
-        [tView release];
       }
-      [win setContentView:hBox];
+      [self layoutTerminalContent];
       isWindowSizeChanged = YES;
       [livePreferences setScrollBackEnabled:boolValue];
     }
