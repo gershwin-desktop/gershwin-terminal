@@ -62,6 +62,9 @@
 #import <AppKit/AppKit.h>
 #import <GNUstepBase/Unicode.h>
 #import <Foundation/NSTask.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#import <GNUstepGUI/GSDisplayServer.h>
 
 #import "TerminalWindow.h"
 #import "TerminalView.h"
@@ -992,6 +995,13 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 - (void)setNeedsDisplayInRect:(NSRect)r
 {
+  /* Single unified content-activity signal: every visible change in the
+     terminal (PTY output, scrollback scroll, selection, cursor blink, resize)
+     funnels through a display request, so reporting here covers them all -
+     including while the window is WindowShaded, where drawRect is never called
+     but the model still requests a redraw. */
+  [self _gershwinSignalContentActivity];
+
   /* Do not force full-screen redraw here. Callers that genuinely need a full
      repaint call -setNeedsDisplay:YES (which goes through the full-redraw
      path). Leaving draw_all alone lets lazy dirty-cell drawing stay efficient
@@ -1004,7 +1014,9 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   if (draw_all == 1) {
     draw_all = 0;
   }
-  [super setNeedsDisplayInRect:r];
+  /* Route through self so the content-activity signal in setNeedsDisplayInRect:
+     is the one and only path that reports terminal activity. */
+  [self setNeedsDisplayInRect:r];
 }
 
 
@@ -1043,6 +1055,41 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     *s++ = ch;
   }
   ADD_DIRTY(x, y, c, 1);
+}
+
+// Signal the window manager that this terminal's content changed.  The WM
+// uses this to drive the titlebar "busy" spinner.  We cannot rely on the
+// X Damage extension here: while the window is WindowShaded the client is
+// clipped by the (shrunk) frame, so the X server emits no Damage for it, and
+// gershwin-terminal also opts out of compositing (_NET_WM_BYPASS_COMPOSITOR)
+// for performance.  A lightweight property write bypasses both problems and
+// fires regardless of visibility.  Throttled to 250ms - the spinner is driven
+// off this; anything finer is wasted X traffic.
+- (void)_gershwinSignalContentActivity
+{
+  NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+  if (actLast > 0 && (now - actLast) < 0.25)
+    return;
+  actLast = now;
+
+  if (actDpy == NULL) {
+    GSDisplayServer *server = GSCurrentServer();
+    actDpy = (Display *)[server serverDevice];
+    if (actDpy)
+      actAtom = XInternAtom(actDpy, "_GERSHWIN_CONTENT_ACTIVITY", False);
+  }
+  if (actWin == 0) {
+    NSWindow *win = [self window];
+    if (win) {
+      GSDisplayServer *server = GSCurrentServer();
+      actWin = (Window)(intptr_t)[server windowDevice:[win windowNumber]];
+    }
+  }
+  if (actDpy && actWin && actAtom != None) {
+    unsigned long v = 1;
+    XChangeProperty(actDpy, actWin, actAtom, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)&v, 1);
+  }
 }
 
 - (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter
@@ -1418,15 +1465,42 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 #pragma mark - TerminalScreen protocol
 
+/* Programs such as Claude Code animate a busy spinner by prefixing their
+   title with a changing symbol character.  Every frame would
+   rename the window, which in turn renames its Windows menu item and makes
+   the global menu bar rebuild the whole application menu several times per
+   second.  Dropping a leading symbol keeps the title identical whether the
+   spinner is shown or not. */
+static NSString *TitleWithoutLeadingSymbol(NSString *title)
+{
+  NSUInteger length = [title length];
+
+  if (length >= 2
+      && [[NSCharacterSet symbolCharacterSet] characterIsMember:[title characterAtIndex:0]]
+      && [title characterAtIndex:1] == ' ') {
+    return [title substringFromIndex:2];
+  }
+  return title;
+}
+
 - (void)ts_setTitle:(NSString *)new_title type:(int)title_type
 {
+  BOOL changed = NO;
+
   NSDebugLLog(@"ts", @"setTitle: %@  type: %i", new_title, title_type);
 
-  if (title_type == 1 || title_type == 0) {
+  new_title = TitleWithoutLeadingSymbol(new_title);
+
+  if ((title_type == 1 || title_type == 0) && ![new_title isEqualToString:xtermIconTitle]) {
     ASSIGN(xtermIconTitle, new_title);
+    changed = YES;
   }
-  if (title_type == 2 || title_type == 0) {
+  if ((title_type == 2 || title_type == 0) && ![new_title isEqualToString:xtermTitle]) {
     ASSIGN(xtermTitle, new_title);
+    changed = YES;
+  }
+  if (!changed) {
+    return;
   }
   [[NSNotificationCenter defaultCenter] postNotificationName:TerminalViewTitleDidChangeNotification
                                                       object:self];
@@ -2924,8 +2998,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   int iy, ny;
   int copy_sx;
 
-  nsx = (size.width - border_x) / fx;
-  nsy = (size.height - border_y) / fy;
+  nsx = (int)floor((size.width - border_x + 0.001) / fx);
+  nsy = (int)floor((size.height - border_y + 0.001) / fy);
 
   NSDebugLLog(@"term", @"_resizeTerminalTo: (%g %g) %i %i (%g %g)\n", size.width, size.height, nsx,
               nsy, nsx * fx, nsy * fy);
@@ -2947,6 +3021,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
      window. */
   if (nsx == screen_width && nsy == screen_height) {
     draw_all = 2;
+    [self setNeedsDisplay:YES];
     return;
   }
 
@@ -2965,6 +3040,24 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   }
   memset(nscreen, 0, sizeof(screen_char_t) * nsx * nsy);
   memset(new_sb_buffer, 0, sizeof(screen_char_t) * nsx * alloc_sb_depth);
+
+  if (alt_screen_buffer) {
+    screen_char_t *new_alt_buffer = malloc(nsx * nsy * sizeof(screen_char_t));
+    if (new_alt_buffer) {
+      memset(new_alt_buffer, 0, nsx * nsy * sizeof(screen_char_t));
+      int copy_w = alt_screen_alloc_w < nsx ? alt_screen_alloc_w : nsx;
+      int copy_h = alt_screen_alloc_h < nsy ? alt_screen_alloc_h : nsy;
+      for (int row = 0; row < copy_h; row++) {
+        memcpy(&new_alt_buffer[row * nsx],
+               &alt_screen_buffer[row * alt_screen_alloc_w],
+               copy_w * sizeof(screen_char_t));
+      }
+      free(alt_screen_buffer);
+      alt_screen_buffer = new_alt_buffer;
+      alt_screen_alloc_w = nsx;
+      alt_screen_alloc_h = nsy;
+    }
+  }
 
   copy_sx = screen_width;
   if (copy_sx > nsx) {
@@ -3051,6 +3144,12 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   if (curr_sb_depth < 0) {
     curr_sb_depth = 0;
   }
+  // The depth update above can shrink the scrollback below the current
+  // scroll position; drawing would then read rows outside the valid
+  // scrollback window and show blank/garbage lines.
+  if (curr_sb_position < -curr_sb_depth) {
+    curr_sb_position = -curr_sb_depth;
+  }
   // fprintf(stderr,
   //         "***< curr_sb_depth=%i, alloc_sb_depth=%i, sy=%i, nsy=%i cursor_y=%i\n",
   //         curr_sb_depth, alloc_sb_depth, sy, nsy, cursor_y);
@@ -3062,15 +3161,24 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   screen = nscreen;
   scrollback = new_sb_buffer;
 
-  if (cursor_x > screen_width) {
+  if (cursor_x >= screen_width) {
     cursor_x = screen_width - 1;
   }
-  if (cursor_y > screen_height) {
+  if (cursor_x < 0) {
+    cursor_x = 0;
+  }
+  if (cursor_y >= screen_height) {
     cursor_y = screen_height - 1;
   }
-  // fprintf(stderr,
-  //         "***< curr_sb_depth=%i, alloc_sb_depth=%i, sy=%i, nsy=%i cursor_y=%i line_shift=%i\n",
-  //         curr_sb_depth, alloc_sb_depth, sy, nsy, cursor_y, line_shift);
+  if (cursor_y < 0) {
+    cursor_y = 0;
+  }
+  current_x = cursor_x;
+  current_y = cursor_y;
+
+  draw_all = 2;
+  pending_scroll = 0;
+  dirty.x0 = -1;
 
   [self _updateScroller];
 
@@ -3079,6 +3187,8 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   if (master_fd != -1) {
     ws.ws_row = nsy;
     ws.ws_col = nsx;
+    ws.ws_xpixel = (unsigned short)(nsx * fx);
+    ws.ws_ypixel = (unsigned short)(nsy * fy);
     ioctl(master_fd, TIOCSWINSZ, &ws);
   }
 
@@ -3611,18 +3721,16 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
       row < -curr_sb_depth || row >= screen_height)
     return nil;
 
-  // Build a combined character buffer of all visible rows so we can
-  // detect multi-line URLs regardless of how many rows they span.
-  int firstVis = -curr_sb_position;
-  int lastVis  = firstVis + screen_height - 1;
-  firstVis = MAX(firstVis, -curr_sb_depth);
-  lastVis  = MIN(lastVis, screen_height - 1);
-  int numRows  = lastVis - firstVis + 1;
+  // Scan ~7 rows around (col, row) to detect multi-line URLs without
+  // blowing the stack on a VLA for the entire scrollback.
+  int startRow = MAX(row - 3, -curr_sb_depth);
+  int endRow   = MIN(row + 3, screen_height - 1);
+  int numRows  = endRow - startRow + 1;
   int totalChars = numRows * screen_width;
 
   unichar buf[totalChars];
   int offset = 0;
-  for (int r = firstVis; r <= lastVis; r++)
+  for (int r = startRow; r <= endRow; r++)
     {
       screen_char_t *ch;
       if (r >= 0) ch = &SCREEN(0, r);
@@ -3631,7 +3739,7 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
         buf[offset++] = (ch[c].ch == 0) ? ' ' : ch[c].ch;
     }
 
-  int absPos = (row - firstVis) * screen_width + col;
+  int absPos = (row - startRow) * screen_width + col;
   NSString *combined = [[NSString alloc] initWithCharacters:buf length:totalChars];
   NSString *foundURL = nil;
 

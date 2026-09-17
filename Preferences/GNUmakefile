@@ -1,5 +1,6 @@
 
 include $(GNUSTEP_MAKEFILES)/common.make
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
 
 BUNDLE_NAME=Preferences
 BUNDLE_EXTENSION=.bundle
@@ -15,3 +16,4 @@ $(BUNDLE_NAME)_STANDARD_INSTALL=no
 -include GNUmakefile.preamble
 include $(GNUSTEP_MAKEFILES)/bundle.make
 -include GNUmakefile.postamble
+
