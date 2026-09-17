@@ -1465,15 +1465,42 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
 #pragma mark - TerminalScreen protocol
 
+/* Programs such as Claude Code animate a busy spinner by prefixing their
+   title with a changing symbol character.  Every frame would
+   rename the window, which in turn renames its Windows menu item and makes
+   the global menu bar rebuild the whole application menu several times per
+   second.  Dropping a leading symbol keeps the title identical whether the
+   spinner is shown or not. */
+static NSString *TitleWithoutLeadingSymbol(NSString *title)
+{
+  NSUInteger length = [title length];
+
+  if (length >= 2
+      && [[NSCharacterSet symbolCharacterSet] characterIsMember:[title characterAtIndex:0]]
+      && [title characterAtIndex:1] == ' ') {
+    return [title substringFromIndex:2];
+  }
+  return title;
+}
+
 - (void)ts_setTitle:(NSString *)new_title type:(int)title_type
 {
+  BOOL changed = NO;
+
   NSDebugLLog(@"ts", @"setTitle: %@  type: %i", new_title, title_type);
 
-  if (title_type == 1 || title_type == 0) {
+  new_title = TitleWithoutLeadingSymbol(new_title);
+
+  if ((title_type == 1 || title_type == 0) && ![new_title isEqualToString:xtermIconTitle]) {
     ASSIGN(xtermIconTitle, new_title);
+    changed = YES;
   }
-  if (title_type == 2 || title_type == 0) {
+  if ((title_type == 2 || title_type == 0) && ![new_title isEqualToString:xtermTitle]) {
     ASSIGN(xtermTitle, new_title);
+    changed = YES;
+  }
+  if (!changed) {
+    return;
   }
   [[NSNotificationCenter defaultCenter] postNotificationName:TerminalViewTitleDidChangeNotification
                                                       object:self];
