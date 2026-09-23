@@ -26,6 +26,7 @@
 #include <AppKit/NSEvent.h>
 
 #include "TerminalParser_Linux.h"
+#include "CharacterWidth.h"
 
 #import "Defaults.h"
 
@@ -61,6 +62,11 @@ static const unichar *_set_translate(int charset)
 
 - (void)_default_attr;
 - (void)_update_attr;
+
+- (void)_putCodePoint:(uint32_t)cp attributes:(screen_char_t)ch;
+- (void)_putChar:(screen_char_t)ch width:(int)char_width;
+- (void)_eraseWideCharacterOverlapping:(int)column;
+- (void)_combineMark:(uint32_t)mark;
 
 @end
 
@@ -205,6 +211,7 @@ static const unichar *_set_translate(int charset)
   [self _default_attr];
   [self _update_attr];
   last_drawn_char = video_erase_char;
+  last_drawn_width = 1;
 
   tab_stop[0] = 0x01010100;
   tab_stop[1] = tab_stop[2] = tab_stop[3] = tab_stop[4] = tab_stop[5] = tab_stop[6] = tab_stop[7] =
@@ -891,6 +898,11 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
       //		del(currcons);
       return;
     case 128 + 27:
+      // In UTF-8 (and the other iconv charsets) 0x9B is part of a
+      // character, e.g. the continuation byte of U+259B, not the 8-bit CSI;
+      // only plain Latin-1 mode may treat it as a control.
+      if (utf || iconv_state)
+        break;
       vc_state = ESsquare;
       return;
   }
@@ -1285,37 +1297,7 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
           {
             int _rep_i;
             for (_rep_i = 0; _rep_i < par[0]; _rep_i++) {
-              screen_char_t rch = last_drawn_char;
-              int char_width;
-
-              /* --- same logic as PUTCH macro --- */
-              if ((x >= width) && decawm) {
-                x = 0;
-                [ts ts_gotoX:x Y:y];
-                if ((y + 1) == bottom) {
-                  scrup(foo, top, bottom, 1,
-                        (top == 0 && bottom == height) ? YES : NO);
-                } else if (y < (height - 1)) {
-                  y++;
-                  [ts ts_gotoX:x Y:y];
-                }
-              }
-              char_width = [ts relativeWidthOfCharacter:rch.ch];
-              if (decim)
-                [ts ts_shiftRow:y at:x delta:char_width];
-              [ts ts_putChar:rch count:1 atX:x Y:y];
-              if (x < width) {
-                x++;
-                char_width--;
-                if ((char_width + x) > width)
-                  char_width = width - x;
-                if (char_width > 0) {
-                  rch.ch = MULTI_CELL_GLYPH;
-                  [ts ts_putChar:rch count:char_width atX:x Y:y];
-                  x += char_width;
-                }
-                [ts ts_gotoX:x Y:y];
-              }
+              [self _putChar:last_drawn_char width:last_drawn_width];
             }
           }
           return;
@@ -1434,30 +1416,6 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         }
         unich = translate[c];
       } else
-#define PUTCH                                        \
-  if (ch.ch != MULTI_CELL_GLYPH)                      \
-    last_drawn_char = ch;                             \
-  if ((x >= width) && decawm) {                      \
-    cr();                                            \
-    lf();                                            \
-  }                                                  \
-  char_width = [ts relativeWidthOfCharacter:ch.ch];  \
-  if (decim)                                         \
-    [ts ts_shiftRow:y at:x delta:char_width];        \
-  [ts ts_putChar:ch count:1 atX:x Y:y];              \
-  if (x < width) {                                   \
-    x++;                                             \
-    char_width--;                                    \
-    if ((char_width + x) > width)                    \
-      char_width = width - x;                        \
-    if (char_width > 0) {                            \
-      ch.ch = MULTI_CELL_GLYPH;                      \
-      [ts ts_putChar:ch count:char_width atX:x Y:y]; \
-      x += char_width;                               \
-    }                                                \
-    [ts ts_gotoX:x Y:y];                             \
-  }
-
       {
         screen_char_t ch;
 
@@ -1465,7 +1423,6 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
         size_t in_size;
         char *outp;
         size_t out_size;
-        int char_width;
         int ret;
 
         if (toggle_meta)
@@ -1496,15 +1453,13 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
           ret = iconv(iconv_state, &inp, &in_size, &outp, &out_size);
 
           if (out_size == 0) {
-            ch.ch = ntohl(unich);
-            PUTCH
+            [self _putCodePoint:ntohl(unich) attributes:ch];
           }
           if (ret >= 0) {
             break;
           }
           if (errno == EILSEQ) { /* illegal input sequence. skip one byte and try again. */
-            ch.ch = 0xfffd;
-            PUTCH
+            [self _putCodePoint:0xfffd attributes:ch];
             in_size--;
             inp++;
           }
@@ -1529,19 +1484,119 @@ static unsigned char color_table[] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 
 
       {
         screen_char_t ch;
-        int char_width;
         ch.color = color;
         ch.attr = (intensity) | (underline << 2) | (reverse << 3) | (blink << 4);
         ch.rgb_flags = rgb_flags;
         ch._pad = 0;
         ch.fg_rgb = fg_rgb;
         ch.bg_rgb = bg_rgb;
-        ch.ch = unich;
-        PUTCH
+        [self _putCodePoint:unich attributes:ch];
       }
       return;
-#undef PUTCH
   }
+}
+
+- (void)_putCodePoint:(uint32_t)cp attributes:(screen_char_t)ch
+{
+  int char_width = TerminalCharacterWidth(cp);
+
+  if (char_width == 0) {
+    [self _combineMark:cp];
+    return;
+  }
+  // Cells hold UTF-16 code units; characters beyond the BMP keep their
+  // width but are shown as the replacement character.
+  ch.ch = (cp > 0xFFFF) ? 0xFFFD : cp;
+  [self _putChar:ch width:char_width];
+}
+
+- (void)_putChar:(screen_char_t)ch width:(int)char_width
+{
+  last_drawn_char = ch;
+  last_drawn_width = char_width;
+
+  // A wide character that does not fit into the last column is wrapped as
+  // a whole, like xterm does, instead of being cut in half.
+  if (decawm && (x >= width || (char_width > 1 && x + char_width > width))) {
+    cr();
+    lf();
+  }
+  if (decim) {
+    [ts ts_shiftRow:y at:x delta:char_width];
+  }
+  [self _eraseWideCharacterOverlapping:x];
+  [self _eraseWideCharacterOverlapping:MIN(x + char_width, width) - 1];
+  [ts ts_putChar:ch count:1 atX:x Y:y];
+  if (x < width) {
+    x++;
+    char_width--;
+    if ((char_width + x) > width)
+      char_width = width - x;
+    if (char_width > 0) {
+      ch.ch = MULTI_CELL_GLYPH;
+      [ts ts_putChar:ch count:char_width atX:x Y:y];
+      x += char_width;
+    }
+    [ts ts_gotoX:x Y:y];
+  }
+}
+
+// Overwriting one half of a wide character must blank its other half, or
+// that half would keep showing (or hiding) part of the old glyph.
+- (void)_eraseWideCharacterOverlapping:(int)column
+{
+  screen_char_t cell;
+
+  if (column < 0 || column >= width)
+    return;
+  cell = [ts ts_getCharAtX:column Y:y];
+  if (cell.ch == MULTI_CELL_GLYPH && column > 0) {
+    screen_char_t owner = [ts ts_getCharAtX:column - 1 Y:y];
+
+    owner.ch = ' ';
+    [ts ts_putChar:owner count:1 atX:column - 1 Y:y];
+  }
+  if (column + 1 < width && [ts ts_getCharAtX:column + 1 Y:y].ch == MULTI_CELL_GLYPH) {
+    screen_char_t half = [ts ts_getCharAtX:column + 1 Y:y];
+
+    half.ch = ' ';
+    [ts ts_putChar:half count:1 atX:column + 1 Y:y];
+  }
+}
+
+// Cells hold a single character, so a combining mark is merged into the
+// character before it where Unicode has a precomposed form (e + U+0301 is
+// U+00E9). Marks without one are dropped: that keeps the line aligned with
+// the zero width the program expects, which matters more than the mark.
+- (void)_combineMark:(uint32_t)mark
+{
+  int column = x - 1;
+  screen_char_t base;
+  uint32_t units[2];
+  NSString *combined;
+
+  if (column < 0)
+    return;
+  base = [ts ts_getCharAtX:column Y:y];
+  if (base.ch == MULTI_CELL_GLYPH && column > 0) {
+    column--;
+    base = [ts ts_getCharAtX:column Y:y];
+  }
+  if (base.ch == 0 || base.ch == MULTI_CELL_GLYPH)
+    return;
+
+  units[0] = NSSwapHostIntToLittle(base.ch);
+  units[1] = NSSwapHostIntToLittle(mark);
+  combined = [[[NSString alloc] initWithBytes:units
+                                       length:sizeof(units)
+                                     encoding:NSUTF32LittleEndianStringEncoding] autorelease];
+  combined = [combined precomposedStringWithCanonicalMapping];
+  if ([combined length] != 1)
+    return;
+
+  base.ch = [combined characterAtIndex:0];
+  [ts ts_putChar:base count:1 atX:column Y:y];
+  last_drawn_char = base;
 }
 
 - (void)pasteString:(NSString *)s

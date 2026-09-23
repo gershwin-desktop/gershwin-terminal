@@ -31,6 +31,7 @@ Terminal_OBJC_FILES = \
 	TerminalWindow.m \
 	TerminalView.m \
 	TerminalParser_Linux.m \
+	CharacterWidth.m \
 	\
 	\
 	TerminalFinder.m \

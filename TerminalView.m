@@ -516,6 +516,29 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   if (y1 >= screen_height)
     y1 = screen_height;
 
+  /* A wide character's glyph spans two cells; redrawing only one of them
+     would clip or double-draw half of the glyph. */
+  if (!draw_all) {
+    if (x0 > 0)
+      x0--;
+    if (x1 < screen_width)
+      x1++;
+    for (iy = y0; iy < y1; iy++) {
+      int ry = iy + curr_sb_position;
+      screen_char_t *row = (ry >= 0) ? &SCREEN(0, ry)
+                                     : &scrollback[(alloc_sb_depth + ry) * screen_width];
+
+      for (ix = x0; ix < x1; ix++) {
+        if (!(row[ix].attr & 0x80))
+          continue;
+        if (row[ix].ch == MULTI_CELL_GLYPH && ix > 0)
+          row[ix - 1].attr |= 0x80;
+        if (ix + 1 < screen_width && row[ix + 1].ch == MULTI_CELL_GLYPH)
+          row[ix + 1].attr |= 0x80;
+      }
+    }
+  }
+
   NSDebugLLog(@"draw", @"dirty (%i %i)-(%i %i)\n", x0, y0, x1, y1);
 
   shouldDrawCursor = shouldDrawCursor || draw_all || (SCREEN(cursor_x, cursor_y).attr & 0x80) != 0;

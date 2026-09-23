@@ -95,6 +95,7 @@
 
   screen_char_t video_erase_char;
   screen_char_t last_drawn_char; /* for REP (repeat last graphic) */
+  int last_drawn_width;
 
 #define NPAR 16
   int npar;
