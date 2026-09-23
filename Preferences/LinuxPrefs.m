@@ -89,8 +89,6 @@ static character_set_choice_t cs_choices[] = {{@"UTF-8",      __(@"Unicode")},
   }
   [charsetBtn selectItemAtIndex:i];
 
-  [handleMulticellBtn setState:([defs useMultiCellGlyphs] == YES)];
-
   [escapeKeyBtn setState:[defs doubleEscape]];
   [alternateKeyMtrx selectCellWithTag:[defs alternateAsMeta] ? 1 : 0];
 }
@@ -105,8 +103,6 @@ static character_set_choice_t cs_choices[] = {{@"UTF-8",      __(@"Unicode")},
   } else {
     [defs setCharacterSet:nil];
   }
-  [defs setUseMultiCellGlyphs:[handleMulticellBtn state]];
-
   [defs setDoubleEscape:[escapeKeyBtn state]];
   [defs setAlternateAsMeta:[[alternateKeyMtrx selectedCell] tag]];
 
@@ -134,7 +130,6 @@ static character_set_choice_t cs_choices[] = {{@"UTF-8",      __(@"Unicode")},
 
   // Character Set
   [prefs setCharacterSet:cs_choices[[charsetBtn indexOfSelectedItem]].name];
-  [prefs setUseMultiCellGlyphs:[handleMulticellBtn state]];
 
   // Escape Key
   [prefs setDoubleEscape:[escapeKeyBtn state]];
@@ -159,14 +154,6 @@ static character_set_choice_t cs_choices[] = {{@"UTF-8",      __(@"Unicode")},
 
   csName = cs_choices[[charsetBtn indexOfSelectedItem]].name;
   [defs setCharacterSet:csName];
-  [defs synchronize];
-}
-
-- (void)setMultiCellGlyphs:(id)sender
-{
-  Defaults *defs = [[Preferences shared] mainWindowPreferences];
-
-  [defs setUseMultiCellGlyphs:[handleMulticellBtn state]];
   [defs synchronize];
 }
 

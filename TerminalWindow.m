@@ -572,11 +572,6 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
     [tView setCharset:cs];
     [livePreferences setCharacterSet:cs];
   }
-  if ([prefs objectForKey:UseMultiCellGlyphsKey]) {
-    boolValue = [prefs useMultiCellGlyphs];
-    [tView setUseMulticellGlyphs:boolValue];
-    [livePreferences setUseMultiCellGlyphs:boolValue];
-  }
   if ([prefs objectForKey:DoubleEscapeKey]) {
     boolValue = [prefs doubleEscape];
     [tView setDoubleEscape:boolValue];

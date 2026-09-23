@@ -1506,24 +1506,6 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
                                                       object:self];
 }
 
-- (int)relativeWidthOfCharacter:(unichar)ch
-{
-  int s;
-  if (!useMultiCellGlyphs) {
-    return 1;
-  }
-  s = ceil([font boundingRectForGlyph:ch].size.width / fx);
-  if (s < 1) {
-    return 1;
-  }
-  return s;
-}
-
-- (BOOL)useMultiCellGlyphs
-{
-  return useMultiCellGlyphs;
-}
-
 @end
 
 
@@ -2887,8 +2869,6 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
   [self setAdditionalWordCharacters:[defaults wordCharacters]];
 
-  useMultiCellGlyphs = [defaults useMultiCellGlyphs];
-
   screen = malloc(sizeof(screen_char_t) * screen_width * screen_height);
   memset(screen, 0, sizeof(screen_char_t) * screen_width * screen_height);
   draw_all = 2;
@@ -3392,10 +3372,6 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 - (void)setCharset:(NSString *)charsetName
 {
   [terminalParser setCharset:charsetName];
-}
-- (void)setUseMulticellGlyphs:(BOOL)multicellGlyphs
-{
-  useMultiCellGlyphs = multicellGlyphs;
 }
 - (void)setDoubleEscape:(BOOL)doubleEscape
 {

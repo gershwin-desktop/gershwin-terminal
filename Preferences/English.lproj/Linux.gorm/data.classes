@@ -2,7 +2,6 @@
     "## Comment" = "Do NOT change this file, Gorm maintains it";
     FirstResponder = {
 	Actions = (
-	    "setMultiCellGlyphs:",
 	    "setAlternateKey:",
 	    "setCharset:",
 	    "setDefault:",
@@ -19,8 +18,7 @@
 	    "setAlternateKey:",
 	    "setEscapeKey:",
 	    "setWindow:",
-	    "showDefault:",
-	    "setMultiCellGlyphs:"
+	    "showDefault:"
 	);
 	Outlets = (
 	    charsetBtn,
@@ -28,7 +26,6 @@
 	    escapeKeyBtn,
 	    window,
 	    view,
-	    handleMulticellBtn,
 	    alternateKeyMtrx
 	);
 	Super = NSObject;

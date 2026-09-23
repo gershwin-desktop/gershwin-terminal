@@ -6,7 +6,6 @@
 	    "setCharset:",
 	    "setDefault:",
 	    "setEscapeKey:",
-	    "setMultiCellGlyphs:",
 	    "setWindow:",
 	    "setWordCharacters:",
 	    "showDefault:"
@@ -20,8 +19,7 @@
 	    "setAlternateKey:",
 	    "setEscapeKey:",
 	    "setWindow:",
-	    "showDefault:",
-	    "setMultiCellGlyphs:"
+	    "showDefault:"
 	);
 	Outlets = (
 	    charsetBtn,
@@ -29,7 +27,6 @@
 	    escapeKeyBtn,
 	    window,
 	    view,
-	    handleMulticellBtn,
 	    alternateKeyMtrx
 	);
 	Super = NSObject;

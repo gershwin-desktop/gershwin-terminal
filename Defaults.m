@@ -437,7 +437,6 @@ const NSUInteger TitleBarXTermTitle = 1 << 5;
 // Linux Emulation
 //---
 NSString *CharacterSetKey = @"Linux_CharacterSet";
-NSString *UseMultiCellGlyphsKey = @"UseMultiCellGlyphs";
 NSString *AlternateAsMetaKey = @"AlternateAsMeta";
 NSString *DoubleEscapeKey = @"DoubleEscape";
 //---
@@ -481,14 +480,6 @@ NSString *DoubleEscapeKey = @"DoubleEscape";
 - (void)setDoubleEscape:(BOOL)yn
 {
   [self setBool:yn forKey:DoubleEscapeKey];
-}
-- (BOOL)useMultiCellGlyphs
-{
-  return [self boolForKey:UseMultiCellGlyphsKey];
-}
-- (void)setUseMultiCellGlyphs:(BOOL)yn
-{
-  [self setBool:yn forKey:UseMultiCellGlyphsKey];
 }
 @end
 

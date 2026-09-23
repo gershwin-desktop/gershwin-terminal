@@ -123,7 +123,6 @@ extern const NSUInteger TitleBarXTermTitle;
 // Linux Emulation
 //---
 extern NSString *CharacterSetKey;
-extern NSString *UseMultiCellGlyphsKey;
 extern NSString *AlternateAsMetaKey;
 extern NSString *DoubleEscapeKey;
 
@@ -134,8 +133,6 @@ extern NSString *DoubleEscapeKey;
 - (void)setAlternateAsMeta:(BOOL)yn;
 - (BOOL)doubleEscape;
 - (void)setDoubleEscape:(BOOL)yn;
-- (BOOL)useMultiCellGlyphs;
-- (void)setUseMultiCellGlyphs:(BOOL)yn;
 @end
 //----------------------------------------------------------------------------
 // Selection

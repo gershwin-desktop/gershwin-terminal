@@ -66,8 +66,6 @@ complete. (TODO check this) */
 - (void)ts_setTitle:(NSString *)new_title type:(int)title_type;
 
 - (id)preferences;
-- (BOOL)useMultiCellGlyphs;
-- (int)relativeWidthOfCharacter:(unichar)ch;
 
 @optional
 - (void)ts_setAlternateScreen:(BOOL)useAlt clearOnEnter:(BOOL)clearOnEnter;

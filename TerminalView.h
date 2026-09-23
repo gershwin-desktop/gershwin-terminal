@@ -55,7 +55,6 @@ struct selection_range {
   NSFont *boldFont;
   int font_encoding;
   int boldFont_encoding;
-  BOOL useMultiCellGlyphs;
   float fx, fy, fx0, fy0;
 
   struct {
@@ -188,7 +187,6 @@ struct selection_range {
 - (void)blinkCursor;
 
 - (void)setCharset:(NSString *)charsetName;
-- (void)setUseMulticellGlyphs:(BOOL)multicellGlyphs;
 - (void)setDoubleEscape:(BOOL)doubleEscape;
 - (void)setAlternateAsMeta:(BOOL)altAsMeta;
 
