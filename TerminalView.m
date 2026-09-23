@@ -68,6 +68,7 @@
 
 #import "TerminalWindow.h"
 #import "TerminalView.h"
+#import "BoxDrawing.h"
 
 #pragma mark - Definitions
 
@@ -894,7 +895,10 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
         }
 
         //--- FONTS & ENCODING
-        if (ch->ch != 0 && ch->ch != 32 && ch->ch != MULTI_CELL_GLYPH) {
+        if (TerminalIsBoxDrawingCharacter(ch->ch)) {
+          total_draw++;
+          TerminalDrawBoxDrawingCharacter(cur, ch->ch, NSMakeRect(scr_x, scr_y, fx, fy));
+        } else if (ch->ch != 0 && ch->ch != 32 && ch->ch != MULTI_CELL_GLYPH) {
           total_draw++;
           if ((ch->attr & 3) == 2) {
             encoding = boldFont_encoding;
@@ -969,7 +973,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
 
         //--- UNDERLINE — SGR underline or URL link
         if ((ch->attr & 0x4) || urlMask[ix]) {
-          DPSrectfill(cur, scr_x, scr_y, fx, 1);
+          DPSrectfill(cur, scr_x, scr_y, fx, [Defaults roundToDevicePixels:1.0]);
         }
 
         wasURL = urlMask[ix];
@@ -993,13 +997,21 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
           DPScompositerect(cur, x, y, fx, fy, NSCompositeSourceIn);
           break;
         case CURSOR_BLOCK_STROKE:  // 1
-          DPSrectstroke(cur, x + 0.5, y + 0.5, fx - 1.0, fy - 1.0);
+        {
+          CGFloat w = [Defaults roundToDevicePixels:1.0];
+
+          // Stroke on pixel centers so the outline is exactly one line wide.
+          DPSgsave(cur);
+          DPSsetlinewidth(cur, w);
+          DPSrectstroke(cur, x + w / 2, y + w / 2, fx - w, fy - w);
+          DPSgrestore(cur);
           break;
+        }
         case CURSOR_BLOCK_FILL:  // 2
           DPSrectfill(cur, x, y, fx, fy);
           break;
         case CURSOR_LINE:  // 3
-          DPSrectfill(cur, x, y, fx, fy * 0.1);
+          DPSrectfill(cur, x, y, fx, [Defaults roundToDevicePixels:fy * 0.1]);
           break;
       }
     }
@@ -3334,7 +3346,9 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
   r = [font boundingRectForFont];
   fx0 = -r.origin.x;
-  fy0 = -r.origin.y;
+  // Same alignment as the cell height in characterCellSizeForFont:, so the
+  // baseline sits on a device pixel.
+  fy0 = [Defaults ceilToDevicePixels:-r.origin.y];
   font_encoding = [font mostCompatibleStringEncoding];
 
   NSDebugLLog(@"term", @"Bounding (%g %g)+(%g %g)", -fx0, -fy0, fx, fy);
@@ -3536,8 +3550,9 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
 
 - (void)setBorderX:(float)x Y:(float)y
 {
-  border_x = x;
-  border_y = y;
+  // Cell edges are offset by the border; see characterCellSizeForFont:.
+  border_x = [Defaults roundToDevicePixels:x];
+  border_y = [Defaults roundToDevicePixels:y];
 }
 
 #pragma mark - Drag and Drop
