@@ -117,9 +117,9 @@ NSString *TerminalViewSizeDidChangeNotification = @"TerminalViewSizeDidChange";
 // - (void)setScroller:(NSScroller *)sc;
 // @end
 
-// @interface TerminalView (selection)
-// - (void)_clearSelection;
-// @end
+@interface TerminalView (selection)
+- (void)_clearSelection;
+@end
 
 
 #pragma mark - Scrolling
@@ -1350,6 +1350,12 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   if (bottom > screen_height || top >= bottom || rows < 1) {
     return;
   }
+
+  // selection.location is an offset relative to the current screen top;
+  // a scroll moves that reference point, so any existing selection would
+  // silently point at the wrong cells if kept.
+  [self _clearSelection];
+
   d = &SCREEN(0, top);
   s = &SCREEN(0, top + rows);
 
@@ -1407,6 +1413,10 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
   if (bottom > screen_height || top >= bottom || rows < 1) {
     return;
   }
+
+  // See the matching comment in ts_scrollUpTop:bottom:rows:save:.
+  [self _clearSelection];
+
   s = &SCREEN(0, top);
   step = screen_width * rows;
   if (current_y >= top && current_y <= bottom) {
@@ -2252,8 +2262,14 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
     [self updateProgramPath];
   }
   shouldUpdateTitlebar = NO;
-  
-  [self _clearSelection]; /* TODO? */
+
+  // Do not blindly drop the selection here: this runs on every chunk of
+  // pty output, including output that never touches the selected rows
+  // (or none at all, e.g. a lone echoed keystroke elsewhere). Only a real
+  // scroll invalidates the selection's coordinates, and that is handled
+  // in ts_scrollUpTop:bottom:rows:save: / ts_scrollDownTop:bottom:rows:,
+  // which are the only paths that shift the screen's top-of-frame
+  // reference that selection.location is relative to.
 
   NSDebugLLog(@"term", @"receiving output");
 
