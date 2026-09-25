@@ -1,0 +1,22 @@
+GNUSTEP_INSTALLATION_DOMAIN = SYSTEM
+
+ADDITIONAL_INCLUDE_DIRS += -I../..
+
+ADDITIONAL_OBJCFLAGS += -Wno-deprecated
+
+# TerminalView.m is #include'd directly into t_Selection.m so the test can
+# reach its private selection/scroll methods and ivars; these are its real
+# collaborators, linked as separate objects (see gnustep-red-green-tdd skill).
+t_Selection_OBJC_FILES += ../../Defaults.m \
+                          ../../TerminalParser_Linux.m \
+                          ../../CharacterWidth.m \
+                          ../../BoxDrawing.m
+
+t_Selection_TOOL_LIBS += -lgnustep-gui -lutil -lX11
+
+ifeq ($(findstring freebsd,$(GNUSTEP_TARGET_OS)),freebsd)
+t_Selection_TOOL_LIBS += -liconv
+endif
+ifeq ($(findstring openbsd,$(GNUSTEP_TARGET_OS)),openbsd)
+t_Selection_TOOL_LIBS += -liconv
+endif
