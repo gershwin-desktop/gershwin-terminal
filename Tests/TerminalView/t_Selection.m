@@ -1,12 +1,8 @@
 /* t_Selection.m - ObjectTesting coverage for TerminalView's text selection.
  *
- * Copyright (c) 2002 Alexander Malmberg <alexander@malmberg.org>
- * Copyright (c) 2015-2017 Sergii Stoian <stoyan255@gmail.com>
+ * Copyright (c) 2026 Simon Peter
  *
- * This file is a part of Terminal.app. Terminal.app is free software; you
- * can redistribute it and/or modify it under the terms of the GNU General
- * Public License as published by the Free Software Foundation; version 2
- * of the License. See COPYING or main.m for more information.
+ * SPDX-License-Identifier: BSD-2-Clause OR GPL-3.0-or-later
  */
 
 #import <Foundation/Foundation.h>
