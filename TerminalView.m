@@ -2577,6 +2577,16 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
 
 - (int)runShell
 {
+  return [self runShellInDirectory:nil];
+}
+
+- (int)runShellInDirectory:(NSString *)directory
+{
+  return [self runShellInDirectory:directory initialCommand:nil];
+}
+
+- (int)runShellInDirectory:(NSString *)directory initialCommand:(NSString *)command
+{
   NSString *arg0;
   NSString *path;
   NSArray *args = nil;
@@ -2596,7 +2606,16 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
     arg0 = path;
   }
 
-  return [self runProgram:path withArguments:args inDirectory:nil initialInput:nil arg0:arg0];
+  int pid = [self runProgram:path withArguments:args inDirectory:directory
+                initialInput:nil
+                        arg0:arg0];
+  if (pid > 0 && command != nil) {
+    // Typed into the pty like keys, not given as the shell's stdin: a pipe
+    // on stdin ends in EOF, and the shell would then leave with the command.
+    const char *line = [[command stringByAppendingString:@"\n"] UTF8String];
+    [self ts_sendCString:line length:(int)strlen(line)];
+  }
+  return pid;
 }
 
 @end

@@ -229,6 +229,11 @@ struct selection_range {
      initialInput:(NSString *)d
              arg0:(NSString *)arg0;
 - (int)runShell;
+// Same as -runShell, but the shell starts in the given directory.
+- (int)runShellInDirectory:(NSString *)directory;
+// Same, and the shell is given command followed by a newline as its first
+// input, so quitting the program leaves the shell in the window.
+- (int)runShellInDirectory:(NSString *)directory initialCommand:(NSString *)command;
 
 @end
 

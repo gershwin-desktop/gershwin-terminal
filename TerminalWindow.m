@@ -33,6 +33,22 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
 @interface TerminalWindowController ()
 - (void)layoutTerminalContent;
+- initWithPreferences:(NSDictionary *)defs
+          startupFile:(NSString *)path
+             flipSide:(BOOL)isFlipSide
+               parent:(unsigned long)parentWindowId;
+@end
+
+// A borderless window is refused key status by default, but the flip side
+// has to receive keyboard input.
+@interface TerminalFlipSideWindow : NSWindow
+@end
+
+@implementation TerminalFlipSideWindow
+- (BOOL)canBecomeKeyWindow
+{
+  return YES;
+}
 @end
 
 @implementation TerminalWindowController
@@ -80,13 +96,28 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
   windowCloseBehavior = [preferences windowCloseBehavior];
 
-  contentRect = NSMakeRect(0, 0, winContentSize.width, winContentSize.height);
-  styleMask = (NSClosableWindowMask | NSTitledWindowMask | NSResizableWindowMask |
-               NSMiniaturizableWindowMask);
-  win = [[NSWindow alloc] initWithContentRect:contentRect
-                                    styleMask:styleMask
-                                      backing:NSBackingStoreRetained
-                                        defer:YES];
+  if (flipSide) {
+    // The flip side must always go away together with its shell, whatever
+    // the user chose for ordinary windows.
+    windowCloseBehavior = WindowCloseAlways;
+    // The window manager resizes this window to the size of the front side,
+    // so start from a fixed size instead of the preferred rows and columns.
+    winContentSize = NSMakeSize(600, 400);
+    contentRect = NSMakeRect(0, 0, 600, 400);
+    styleMask = NSBorderlessWindowMask;
+    win = [[TerminalFlipSideWindow alloc] initWithContentRect:contentRect
+                                                    styleMask:styleMask
+                                                      backing:NSBackingStoreRetained
+                                                        defer:YES];
+  } else {
+    contentRect = NSMakeRect(0, 0, winContentSize.width, winContentSize.height);
+    styleMask = (NSClosableWindowMask | NSTitledWindowMask | NSResizableWindowMask |
+                 NSMiniaturizableWindowMask);
+    win = [[NSWindow alloc] initWithContentRect:contentRect
+                                      styleMask:styleMask
+                                        backing:NSBackingStoreRetained
+                                          defer:YES];
+  }
 
   if (!(self = [super initWithWindow:win]))
     return nil;
@@ -99,8 +130,12 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   [win setDelegate:self];
 
   [win setContentSize:winContentSize];
-  [win setResizeIncrements:NSMakeSize(charCellSize.width, charCellSize.height)];
-  [win setMinSize:winMinimumSize];
+  if (!flipSide) {
+    // The window manager sets the flip side's size exactly; snapping it to
+    // whole cells would leave it short of the front side's frame.
+    [win setResizeIncrements:NSMakeSize(charCellSize.width, charCellSize.height)];
+    [win setMinSize:winMinimumSize];
+  }
 
   // Plain container with explicit layout. GSHbox/GSTable is not used here
   // anymore: it keeps row/column geometry as incremental state which can
@@ -186,6 +221,20 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
         unsigned long value = 1;
         XChangeProperty(dpy, xwin, bypassAtom, XA_CARDINAL, 32,
                         PropModeReplace, (unsigned char *)&value, 1);
+
+        if (flipSide)
+          {
+            // The window manager recognizes the flip side by this role and
+            // pairs it with the front side through the transient hint.
+            // Both must be set after the window is mapped, see above.
+            static const char role[] = "flipside";
+            Atom roleAtom = XInternAtom(dpy, "WM_WINDOW_ROLE", False);
+
+            XChangeProperty(dpy, xwin, roleAtom, XA_STRING, 8, PropModeReplace,
+                            (const unsigned char *)role, sizeof(role) - 1);
+            XSetTransientForHint(dpy, xwin, (Window)flipSideParent);
+            XFlush(dpy);
+          }
       }
   }
 }
@@ -199,7 +248,24 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 
 - initWithPreferences:(NSDictionary *)defs startupFile:(NSString *)path
 {
+  return [self initWithPreferences:defs startupFile:path flipSide:NO parent:0];
+}
+
+- initFlipSideWithParent:(unsigned long)parentWindowId
+{
+  return [self initWithPreferences:nil startupFile:nil flipSide:YES parent:parentWindowId];
+}
+
+- initWithPreferences:(NSDictionary *)defs
+          startupFile:(NSString *)path
+             flipSide:(BOOL)isFlipSide
+               parent:(unsigned long)parentWindowId
+{
   self = [super init];
+
+  // Must be known before _setupWindow builds the window.
+  flipSide = isFlipSide;
+  flipSideParent = parentWindowId;
 
   if (defs == nil) {
     preferences = [[Defaults alloc] init];

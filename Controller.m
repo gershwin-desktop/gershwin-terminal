@@ -24,6 +24,7 @@
 #import "TerminalView.h"
 #import "TerminalWindow.h"
 #import "TerminalFinder.h"
+#import "FlipSide.h"
 
 #import "Controller.h"
 
@@ -491,6 +492,37 @@
                                              object:nil];
 }
 
+// Returns YES when this launch is a flip side launch. Exits when the request
+// is invalid: opening the ordinary window instead would show the wrong thing
+// on the back of the application window.
+- (BOOL)startFlipSideIfRequested
+{
+  NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+  NSString *directory = [ud stringForKey:FlipSideDirectoryDefault];
+  NSString *parentString = [ud stringForKey:FlipSideParentDefault];
+  unsigned long parent = 0;
+  BOOL isDir = NO;
+
+  if (directory == nil && parentString == nil) {
+    return NO;
+  }
+  if (directory == nil ||
+      ![[NSFileManager defaultManager] fileExistsAtPath:directory isDirectory:&isDir] || !isDir) {
+    fprintf(stderr, "Terminal: %s is not an existing directory: %s\n",
+            [FlipSideDirectoryDefault UTF8String], directory ? [directory UTF8String] : "(missing)");
+    exit(1);
+  }
+  if (!FlipSideParseWindowId(parentString, &parent)) {
+    fprintf(stderr, "Terminal: %s is not a valid window id: %s\n",
+            [FlipSideParentDefault UTF8String], parentString ? [parentString UTF8String] : "(missing)");
+    exit(1);
+  }
+
+  isFlipSide = YES;
+  [[self newFlipSideWindowWithParent:parent directory:directory] showWindow:self];
+  return YES;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)n
 {
   NSArray *args;
@@ -506,6 +538,11 @@
     if ([[args objectAtIndex:++index] isEqualToString:@"YES"]) {
       isAppAutoLaunched = YES;
     }
+  }
+
+  if ([self startFlipSideIfRequested]) {
+    [NSApp activateIgnoringOtherApps:YES];
+    return;
   }
 
   switch ([[Defaults shared] startupAction]) {
@@ -558,6 +595,13 @@
   if ([pb dataForType:NSFontPboardType] != nil) {
     [pb setData:nil forType:NSFontPboardType];
   }
+}
+
+// The flip side is the only window of this process, so nothing is left to
+// show once it has closed.
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
+{
+  return isFlipSide;
 }
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
@@ -628,7 +672,8 @@
   twc = [windows objectForKey:[NSString stringWithFormat:@"%i", pid]];
   [twc setDocumentEdited:NO];
 
-  windowCloseBehavior = [[twc preferences] windowCloseBehavior];
+  // The window's own behavior, not the preferences': the flip side always closes.
+  windowCloseBehavior = [twc closeBehavior];
   if (windowCloseBehavior != WindowCloseNever) {
     if ((windowCloseBehavior == WindowCloseAlways) || (status == 0)) {
       [twc close];
@@ -895,6 +940,29 @@
     return nil;
 
   pid = [[twc terminalView] runShell];
+  [windows setObject:twc forKey:[NSString stringWithFormat:@"%i", pid]];
+
+  return twc;
+}
+
+// Create the borderless flip side window and run the shell in directory.
+- (TerminalWindowController *)newFlipSideWindowWithParent:(unsigned long)parentWindowId
+                                                directory:(NSString *)directory
+{
+  TerminalWindowController *twc =
+      [[TerminalWindowController alloc] initFlipSideWithParent:parentWindowId];
+  int pid;
+
+  if (twc == nil)
+    return nil;
+
+  // The window manager starts this process, so getenv sees the PATH that
+  // the user's session has.
+  const char *pathEnv = getenv("PATH");
+  NSString *command = FlipSideFirstAvailableCommand(
+      [[twc preferences] flipSideCommands], pathEnv ? [NSString stringWithUTF8String:pathEnv] : nil);
+
+  pid = [[twc terminalView] runShellInDirectory:directory initialCommand:command];
   [windows setObject:twc forKey:[NSString stringWithFormat:@"%i", pid]];
 
   return twc;

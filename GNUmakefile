@@ -29,6 +29,7 @@ Terminal_OBJC_FILES = \
 	TerminalServicesPanel.m \
 	\
 	TerminalWindow.m \
+	FlipSide.m \
 	TerminalView.m \
 	TerminalParser_Linux.m \
 	CharacterWidth.m \

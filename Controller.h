@@ -32,6 +32,8 @@
   NSWindow *mainWindow;
   NSTimer *timer;
   BOOL isAppAutoLaunched;
+  // Launched with -FlipSideDirectory and -FlipSideParent (see FlipSide.h).
+  BOOL isFlipSide;
 
   BOOL quitPanelOpen;
 
@@ -65,6 +67,8 @@
 - (BOOL)isProgramClean:(NSString *)program;
 - (TerminalWindowController *)newWindow;
 - (TerminalWindowController *)newWindowWithShell;
+- (TerminalWindowController *)newFlipSideWindowWithParent:(unsigned long)parentWindowId
+                                               directory:(NSString *)directory;
 - (TerminalWindowController *)newWindowWithPreferences:(id)defs startupFile:(NSString *)path;
 - (void)openStartupFile:(NSString *)filePath;
 - (TerminalWindowController *)newWindowWithProgram:(NSString *)program

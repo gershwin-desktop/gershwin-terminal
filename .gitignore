@@ -2,3 +2,7 @@ Preferences/Preferences.bundle/
 Preferences/obj/
 Terminal.app/
 obj/
+*.d
+*.o
+*.log
+*.sum

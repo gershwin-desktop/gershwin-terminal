@@ -164,3 +164,20 @@ terminal emulation class for some other terminal, contact me and I'll
 do the remaining cleanups necessary to load terminal emulation classes
 from bundles.)
 
+
+
+Flip side
+---------
+
+When the window manager starts Terminal with the defaults FlipSideDirectory
+and FlipSideParent, the terminal shows a shell on the back of another
+window. If one of the programs listed in the default FlipSideCommands is
+found in $PATH, its name is typed into that shell as the first input, so
+quitting the program leaves the shell in the window.
+
+FlipSideCommands is an array of bare program names (no slash), tried in
+order; the default is ("opencode", "claude"). An empty array starts only the
+shell. Invalid entries are reported on stderr and skipped. The key lives in
+the Terminal defaults plist (e.g. ~/GNUstep/Defaults/Terminal.plist):
+
+ defaults write Terminal FlipSideCommands '("claude")'

@@ -240,11 +240,14 @@ extern NSString *CleanCommandsKey;
 //---
 extern NSString *ShellKey;
 extern NSString *LoginShellKey;
+extern NSString *FlipSideCommandsKey;
 
 @interface Defaults (Shell)
 - (NSString *)shell;
 - (void)setShell:(NSString *)sh;
 - (BOOL)loginShell;
+// Names of the programs the flip side tries to start, in order.
+- (NSArray *)flipSideCommands;
 - (void)setLoginShell:(BOOL)yn;
 @end
 

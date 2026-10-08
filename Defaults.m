@@ -837,6 +837,7 @@ NSString *CleanCommandsKey = @"CleanCommands";
 //---
 NSString *ShellKey = @"Shell";
 NSString *LoginShellKey = @"LoginShell";
+NSString *FlipSideCommandsKey = @"FlipSideCommands";
 //---
 @implementation Defaults (Shell)
 - (NSString *)shell
@@ -850,6 +851,21 @@ NSString *LoginShellKey = @"LoginShell";
     shell = @"/bin/sh";
   }
   return shell;
+}
+// Registered default: the agents we know of, preferred one first.
+- (NSArray *)flipSideCommands
+{
+  id obj = [self objectForKey:FlipSideCommandsKey];
+
+  if (obj == nil) {
+    return [NSArray arrayWithObjects:@"opencode", @"claude", nil];
+  }
+  if (![obj isKindOfClass:[NSArray class]]) {
+    fprintf(stderr, "Terminal: %s must be an array of program names\n",
+            [FlipSideCommandsKey UTF8String]);
+    return [NSArray array];
+  }
+  return obj;
 }
 - (void)setShell:(NSString *)sh
 {

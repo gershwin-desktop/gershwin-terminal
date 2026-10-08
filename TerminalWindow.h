@@ -53,6 +53,11 @@ extern NSString *TerminalWindowSizeDidChangeNotification;
   // int  scrollBackLines;
   // BOOL scrollBottomOnInput;
 
+  // Borderless window that the window manager shows on the back of
+  // another application's window (see FlipSide.h).
+  BOOL flipSide;
+  unsigned long flipSideParent;
+
   int scrollerWidth;
   NSSize charCellSize;
   NSSize winContentSize;
@@ -61,6 +66,9 @@ extern NSString *TerminalWindowSizeDidChangeNotification;
 
 // - initWithStartupFile:(NSString *)filePath;
 - initWithPreferences:(NSDictionary *)defs startupFile:(NSString *)path;
+// Borderless window for the flip side of the application window whose X11
+// client window id is parentWindowId.
+- initFlipSideWithParent:(unsigned long)parentWindowId;
 
 - (TerminalView *)terminalView;
 - (WindowCloseBehavior)closeBehavior;
