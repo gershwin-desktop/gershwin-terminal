@@ -612,6 +612,13 @@
   if (![self numberOfActiveTerminalWindows]) {
     return NSTerminateNow;
   }
+  // A quit the flip side meets comes from outside (the window manager
+  // ending an old-style orphan, the session logging out): the user did not
+  // ask Terminal to quit and has no menu to review windows from.  Closing
+  // the window itself asks in a sheet (windowShouldClose:).
+  if (isFlipSide) {
+    return NSTerminateNow;
+  }
 
   // manually check state of windows
   [self checkTerminalWindowsState];

@@ -3578,6 +3578,16 @@ static int handled_mask = (NSDragOperationCopy | NSDragOperationPrivate | NSDrag
   return (master_fd == -1) || (tcgetpgrp(master_fd) == child_pid) ? NO : YES;
 }
 
+- (pid_t)foregroundProcessGroup
+{
+  return (master_fd == -1) ? -1 : tcgetpgrp(master_fd);
+}
+
+- (pid_t)shellPID
+{
+  return child_pid;
+}
+
 - (void)setIgnoreResize:(BOOL)ignore
 {
   shouldIgnoreResize = ignore;

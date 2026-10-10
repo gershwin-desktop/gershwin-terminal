@@ -198,6 +198,10 @@ struct selection_range {
 - (NSSize)windowSize;
 
 - (BOOL)isUserProgramRunning;
+// The pty's foreground process group, -1 when there is no pty or it cannot
+// be read; and the shell (or program) started in it, 0 before that.
+- (pid_t)foregroundProcessGroup;
+- (pid_t)shellPID;
 
 + (void)registerPasteboardTypes;
 

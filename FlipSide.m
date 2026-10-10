@@ -97,3 +97,11 @@ NSString *FlipSideFirstAvailableCommand(NSArray *names, NSString *pathVariable)
   }
   return nil;
 }
+
+BOOL FlipSideHasForegroundJob(pid_t foregroundGroup, pid_t shellPid)
+{
+  if (foregroundGroup <= 0 || shellPid <= 0) {
+    return NO;
+  }
+  return foregroundGroup != shellPid;
+}

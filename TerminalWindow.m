@@ -24,6 +24,7 @@
 
 #import "Controller.h"
 #import "Defaults.h"
+#import "FlipSide.h"
 #import "TerminalWindow.h"
 #import "TerminalView.h"
 
@@ -48,6 +49,25 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
 - (BOOL)canBecomeKeyWindow
 {
   return YES;
+}
+
+// The window manager asks this window to close with WM_DELETE_WINDOW, which
+// libs-back hands to -performClose:.  NSWindow's version beeps whenever the
+// delegate holds the close back, which here only means the confirmation
+// sheet is coming up, and would ask again while it is up.
+- (void)performClose:(id)sender
+{
+  id delegate = [self delegate];
+
+  // The confirmation is already up; asking again would stack a second one.
+  if ([self attachedSheet] != nil) {
+    return;
+  }
+  if ([delegate respondsToSelector:@selector(windowShouldClose:)] &&
+      ![delegate windowShouldClose:self]) {
+    return;
+  }
+  [self close];
 }
 @end
 
@@ -104,7 +124,13 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
     // so start from a fixed size instead of the preferred rows and columns.
     winContentSize = NSMakeSize(600, 400);
     contentRect = NSMakeRect(0, 0, 600, 400);
-    styleMask = NSBorderlessWindowMask;
+    // Closable but without a titlebar: libs-back lists WM_DELETE_WINDOW in
+    // WM_PROTOCOLS only for a closable window, and it rewrites the property
+    // every time the window is ordered front, so the window manager can ask
+    // this window to close (and Terminal ask about a running program) only
+    // with the style bit.  The window manager never frames it for that:
+    // it recognizes the flip side by its role.
+    styleMask = NSBorderlessWindowMask | NSClosableWindowMask;
     win = [[TerminalFlipSideWindow alloc] initWithContentRect:contentRect
                                                     styleMask:styleMask
                                                       backing:NSBackingStoreRetained
@@ -460,8 +486,41 @@ NSString *TerminalWindowSizeDidChangeNotification = @"TerminalWindowSizeDidChang
   [self autorelease];
 }
 
+- (void)flipSideCloseConfirmationDidEnd:(NSAlert *)alert
+                             returnCode:(NSInteger)returnCode
+                            contextInfo:(void *)contextInfo
+{
+  [alert autorelease];
+  if (returnCode == NSAlertSecondButtonReturn) {
+    // Later, so that the sheet is off the window before the window goes.
+    [win performSelector:@selector(close) withObject:nil afterDelay:0.0];
+  }
+}
+
 - (BOOL)windowShouldClose:(id)sender
 {
+  if (flipSide) {
+    // A sheet rather than a panel: the window sits on the back of another
+    // application's window or stands alone as an orphan, and the question
+    // belongs to it.  Which program runs is not asked: there is no portable
+    // way to name it reliably.
+    if (FlipSideHasForegroundJob([tView foregroundProcessGroup], [tView shellPID])) {
+      NSAlert *alert = [[NSAlert alloc] init];
+
+      [alert setMessageText:@"A program is still running in this terminal."];
+      [alert setInformativeText:@"Closing the window will end it."];
+      // The first button is the default one: Return must not end the work.
+      [alert addButtonWithTitle:@"Cancel"];
+      [alert addButtonWithTitle:@"Close"];
+      [alert setAlertStyle:NSWarningAlertStyle];
+      [alert beginSheetModalForWindow:win
+                        modalDelegate:self
+                       didEndSelector:@selector(flipSideCloseConfirmationDidEnd:returnCode:contextInfo:)
+                          contextInfo:NULL];
+      return NO;
+    }
+    return YES;
+  }
   if ([tView isUserProgramRunning]) {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"A process is running in this terminal."];

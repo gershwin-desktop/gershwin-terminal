@@ -26,6 +26,13 @@ int main(void)
   PASS(!FlipSideParseWindowId(@" 5", &w), "whitespace is rejected");
   PASS(!FlipSideParseWindowId(@"999999999999999999999", &w), "overflow is rejected");
 
+  PASS(FlipSideHasForegroundJob(4321, 1234), "another foreground group is a job");
+  PASS(!FlipSideHasForegroundJob(1234, 1234), "the shell in the foreground is no job");
+  PASS(!FlipSideHasForegroundJob(-1, 1234), "an unknown foreground group is no job");
+  PASS(!FlipSideHasForegroundJob(0, 1234), "no foreground group is no job");
+  PASS(!FlipSideHasForegroundJob(4321, 0), "no shell has no job");
+  PASS(!FlipSideHasForegroundJob(4321, -1), "a failed shell start has no job");
+
   {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *root = [NSTemporaryDirectory() stringByAppendingPathComponent:
