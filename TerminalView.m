@@ -1111,7 +1111,7 @@ static void set_foreground(NSGraphicsContext *gc, unsigned char color, unsigned 
     GSDisplayServer *server = GSCurrentServer();
     actDpy = (Display *)[server serverDevice];
     if (actDpy)
-      actAtom = XInternAtom(actDpy, "_GERSHWIN_CONTENT_ACTIVITY", False);
+      actAtom = XInternAtom(actDpy, "_CONTENT_ACTIVITY", False);
   }
   if (actWin == 0) {
     NSWindow *win = [self window];
