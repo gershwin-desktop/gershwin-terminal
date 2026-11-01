@@ -2251,6 +2251,69 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
 //--- Handle master_fd
 //------------------------------------------------------------------------------
 
+/* The environment that integrates GTK and Qt applications into the desktop
+   (their menus in Menu, the window manager's title bar for GTK 3 header
+   bars), as "NAME=value" strings for the shell.  The session does not
+   export it, because a Linux program on a BSD would inherit it and its
+   run-time linker would only report the native libraries as invalid;
+   Workspace adds it to the native applications it launches, and Terminal to
+   its shells here, so a GTK or Qt program started from a shell keeps its
+   integration however Terminal itself was started.  The table is the one
+   gershwin-system installs: groups of variables that apply when their
+   Requires path exists, each value added in front of the colon-separated
+   list unless the list already has it. */
+static NSArray *ToolkitIntegrationEnvironment(void)
+{
+  NSArray *table = [NSArray arrayWithContentsOfFile:
+                              @"/System/Library/Preferences/ToolkitIntegration.plist"];
+  NSMutableDictionary *env = [NSMutableDictionary dictionary];
+  NSMutableArray *result = [NSMutableArray array];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSEnumerator *e = [table objectEnumerator];
+  NSDictionary *group;
+  NSString *key;
+
+  while ((group = [e nextObject]) != nil) {
+    NSDictionary *vars;
+    NSString *requires;
+    NSEnumerator *keys;
+
+    if (![group isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+    vars = [group objectForKey:@"Environment"];
+    requires = [group objectForKey:@"Requires"];
+    if (![vars isKindOfClass:[NSDictionary class]]
+        || ([requires isKindOfClass:[NSString class]] && ![fm fileExistsAtPath:requires])) {
+      continue;
+    }
+    keys = [vars keyEnumerator];
+    while ((key = [keys nextObject]) != nil) {
+      NSString *value = [vars objectForKey:key];
+      NSString *list = [env objectForKey:key];
+
+      if (![value isKindOfClass:[NSString class]] || [value length] == 0) {
+        continue;
+      }
+      if (list == nil) {
+        list = [[[NSProcessInfo processInfo] environment] objectForKey:key];
+      }
+      if ([list length] == 0) {
+        list = value;
+      } else if (![[list componentsSeparatedByString:@":"] containsObject:value]) {
+        list = [NSString stringWithFormat:@"%@:%@", value, list];
+      }
+      [env setObject:list forKey:key];
+    }
+  }
+
+  e = [env keyEnumerator];
+  while ((key = [e nextObject]) != nil) {
+    [result addObject:[NSString stringWithFormat:@"%@=%@", key, [env objectForKey:key]]];
+  }
+  return result;
+}
+
 @implementation TerminalView (Input_Output)
 
 - (void)readData
@@ -2469,8 +2532,16 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
   int i;
   int pipefd[2];
   int flags;
+  NSArray *integration = ToolkitIntegrationEnvironment();
+  const char *cintegration[[integration count] + 1];
 
   NSDebugLLog(@"pty", @"-runProgram: %@ withArguments: %@ initialInput: %@", path, args, d);
+
+  /* Converted before the fork: the child only calls putenv(). */
+  for (i = 0; i < [integration count]; i++) {
+    cintegration[i] = [[integration objectAtIndex:i] UTF8String];
+  }
+  cintegration[i] = NULL;
 
   [self closeProgram];
 
@@ -2525,6 +2596,9 @@ static NSString *TitleWithoutLeadingSymbol(NSString *title)
       putenv("COLORFGBG=0;15");
     } else {
       putenv("COLORFGBG=15;0");
+    }
+    for (i = 0; cintegration[i] != NULL; i++) {
+      putenv((char *)cintegration[i]);
     }
 
     // fprintf(stderr, "Child process terminal: %s\n", ttyname(0));
